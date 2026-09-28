@@ -1,0 +1,98 @@
+site_name: Публикация результатов исследований
+site_description: Исследование безопасности развёртывания и автоматизация публикации на Helios
+site_author: Vasiliy
+site_url: !ENV [SITE_URL, "http://127.0.0.1:8000/"]
+use_directory_urls: true
+docs_dir: docs
+site_dir: site
+strict: true
+exclude_docs: |
+  assets/vendor/**/README.md
+
+theme:
+  name: material
+  language: ru
+  font: false
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Тёмная тема
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Светлая тема
+
+plugins:
+  - search:
+      lang:
+        - ru
+        - en
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - assets/vendor/katex/katex.min.css
+  - assets/stylesheets/extra.css
+
+extra_javascript:
+  - assets/vendor/katex/katex.min.js
+  - assets/vendor/katex/contrib/auto-render.min.js
+  - assets/javascripts/katex-init.js
+
+nav:
+  - Главная: index.md
+  - Эксперимент:
+      - experiment/index.md
+      - Результаты: experiment/results.md
+  - T4 — безопасность развёртывания:
+      - research/t4/index.md
+      - Способы развёртывания: research/t4/deployment-methods.md
+      - Модель угроз: research/t4/security.md
+      - Работа без CDN: research/t4/cdn-independence.md
+  - P4 — публикация на Helios:
+      - practical/p4/index.md
+      - Подключение Helios: practical/p4/setup-helios.md
+      - Пайплайн: practical/p4/pipeline.md
+      - Preview-сборки: practical/p4/previews.md
+      - Healthcheck: practical/p4/healthcheck.md
+      - Откат: practical/p4/rollback.md
+  - Архитектура:
+      - architecture/overview.md
+      - Контракт развёртывания: architecture/deployment-contract.md
+      - Структура релизов: architecture/release-layout.md
+  - Отладка: debugging/index.md
+
+copyright: Код — MIT; содержание — CC BY 4.0

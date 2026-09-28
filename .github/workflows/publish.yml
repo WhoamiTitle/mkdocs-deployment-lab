@@ -1,0 +1,203 @@
+name: Publish
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-pages:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --requirement requirements.txt
+          python -m pip install --no-deps --editable .
+
+      - name: Build GitHub Pages artifact
+        env:
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: python -m publication_pipeline build --site-dir site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: site/
+
+  deploy-pages:
+    if: github.ref == 'refs/heads/main'
+    needs: build-pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+  deploy-helios-production:
+    if: github.ref == 'refs/heads/main' && vars.HELIOS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: helios-production
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --requirement requirements.txt
+          python -m pip install --no-deps --editable .
+
+      - name: Prepare protected SSH files
+        env:
+          HELIOS_SSH_KEY: ${{ secrets.HELIOS_SSH_KEY }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets.HELIOS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 .secrets
+          install -m 600 /dev/null .secrets/helios_key
+          install -m 600 /dev/null .secrets/known_hosts
+          printf '%s\n' "$HELIOS_SSH_KEY" > .secrets/helios_key
+          printf '%s\n' "$HELIOS_KNOWN_HOSTS" > .secrets/known_hosts
+
+      - name: Build for Helios production URL
+        env:
+          SITE_URL: ${{ vars.HELIOS_BASE_URL }}
+        run: python -m publication_pipeline build --site-dir site
+
+      - name: Deploy production release
+        id: deploy
+        env:
+          HELIOS_HOST: ${{ vars.HELIOS_HOST }}
+          HELIOS_USER: ${{ vars.HELIOS_USER }}
+          HELIOS_PORT: ${{ vars.HELIOS_PORT }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ vars.HELIOS_DEPLOYMENT_ROOT }}
+          HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
+          HELIOS_SSH_KEY_PATH: .secrets/helios_key
+          HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
+        run: python -m publication_pipeline deploy-ssh --site-dir site
+
+      - name: Verify production release
+        env:
+          HELIOS_BASE_URL: ${{ vars.HELIOS_BASE_URL }}
+        run: >-
+          python -m publication_pipeline healthcheck
+          --url "$HELIOS_BASE_URL"
+          --release-file site/release.json
+          --attempts 5
+          --delay-seconds 5
+
+      - name: Roll back after a failed production healthcheck
+        if: failure() && steps.deploy.outcome == 'success'
+        env:
+          HELIOS_HOST: ${{ vars.HELIOS_HOST }}
+          HELIOS_USER: ${{ vars.HELIOS_USER }}
+          HELIOS_PORT: ${{ vars.HELIOS_PORT }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ vars.HELIOS_DEPLOYMENT_ROOT }}
+          HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
+          HELIOS_SSH_KEY_PATH: .secrets/helios_key
+          HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
+        run: python -m publication_pipeline rollback-ssh
+
+  deploy-helios-preview:
+    if: github.ref != 'refs/heads/main' && vars.HELIOS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: helios-preview
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --requirement requirements.txt
+          python -m pip install --no-deps --editable .
+
+      - name: Prepare protected SSH files
+        env:
+          HELIOS_SSH_KEY: ${{ secrets.HELIOS_SSH_KEY }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets.HELIOS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 .secrets
+          install -m 600 /dev/null .secrets/helios_key
+          install -m 600 /dev/null .secrets/known_hosts
+          printf '%s\n' "$HELIOS_SSH_KEY" > .secrets/helios_key
+          printf '%s\n' "$HELIOS_KNOWN_HOSTS" > .secrets/known_hosts
+
+      - name: Resolve preview URL
+        id: preview
+        env:
+          HELIOS_BASE_URL: ${{ vars.HELIOS_BASE_URL }}
+        run: |
+          slug="$(python -m publication_pipeline branch-slug --branch "$GITHUB_REF_NAME")"
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+          echo "url=${HELIOS_BASE_URL%/}/previews/$slug/" >> "$GITHUB_OUTPUT"
+
+      - name: Build for preview URL
+        env:
+          SITE_URL: ${{ steps.preview.outputs.url }}
+        run: python -m publication_pipeline build --site-dir site
+
+      - name: Deploy preview release
+        env:
+          HELIOS_HOST: ${{ vars.HELIOS_HOST }}
+          HELIOS_USER: ${{ vars.HELIOS_USER }}
+          HELIOS_PORT: ${{ vars.HELIOS_PORT }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ vars.HELIOS_DEPLOYMENT_ROOT }}
+          HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
+          HELIOS_SSH_KEY_PATH: .secrets/helios_key
+          HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
+        run: >-
+          python -m publication_pipeline preview-ssh
+          --site-dir site
+          --branch "$GITHUB_REF_NAME"
+
+      - name: Verify preview release
+        run: >-
+          python -m publication_pipeline healthcheck
+          --url "${{ steps.preview.outputs.url }}"
+          --release-file site/release.json
+          --attempts 5
+          --delay-seconds 5

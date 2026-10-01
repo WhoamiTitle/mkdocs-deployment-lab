@@ -1,4 +1,4 @@
-"""SSH/rsync adapter for publishing immutable releases on a Linux host."""
+"""SSH/rsync adapter for publishing immutable releases on Linux and FreeBSD."""
 
 from __future__ import annotations
 
@@ -78,7 +78,8 @@ class SshRsyncReleaseGateway:
         )
         self._rsync(source, staging_relative)
         self._ssh(
-            f"set -eu; {self._home_assignment('root', self._settings.deployment_root)} "
+            f"set -eu; {_atomic_symlink_replacer()} "
+            f"{self._home_assignment('root', self._settings.deployment_root)} "
             f"{self._home_assignment('public', self._settings.public_path)} "
             f'stage="$root/releases/.staging-{release.release_id}"; '
             f'final="$root/releases/{release.release_id}"; '
@@ -88,12 +89,13 @@ class SshRsyncReleaseGateway:
             'old=$(readlink "$root/current" 2>/dev/null || true); '
             'if [ -n "$old" ]; then '
             '  ln -sfn "$old" "$root/previous.next"; '
-            '  mv -Tf "$root/previous.next" "$root/previous"; '
+            '  replace_symlink_atomically "$root/previous.next" "$root/previous"; '
             "fi; "
             f'ln -sfn releases/{shlex.quote(release.release_id)} "$root/current.next"; '
-            'mv -Tf "$root/current.next" "$root/current"; '
+            'replace_symlink_atomically "$root/current.next" "$root/current"; '
             'mkdir -p "$(dirname "$public")"; '
-            'ln -sfn "$final" "$public.next"; mv -Tf "$public.next" "$public"'
+            'ln -sfn "$final" "$public.next"; '
+            'replace_symlink_atomically "$public.next" "$public"'
         )
         return DeploymentReceipt(
             release_id=release.release_id,
@@ -120,14 +122,15 @@ class SshRsyncReleaseGateway:
         )
         self._rsync(source, staging_relative)
         self._ssh(
-            f"set -eu; {self._home_assignment('root', self._settings.deployment_root)} "
+            f"set -eu; {_atomic_symlink_replacer()} "
+            f"{self._home_assignment('root', self._settings.deployment_root)} "
             f'stage="$root/preview-releases/{branch_slug}/.staging-{release.release_id}"; '
             f'final="$root/preview-releases/{branch_slug}/{release.release_id}"; '
             'test -f "$stage/index.html"; test -f "$stage/release.json"; '
             'test ! -e "$final"; mv "$stage" "$final"; '
             f"ln -sfn ../preview-releases/{branch_slug}/{release.release_id} "
             f'"$root/shared-previews/.{branch_slug}.next"; '
-            f'mv -Tf "$root/shared-previews/.{branch_slug}.next" '
+            f'replace_symlink_atomically "$root/shared-previews/.{branch_slug}.next" '
             f'"$root/shared-previews/{branch_slug}"'
         )
         return DeploymentReceipt(
@@ -138,16 +141,18 @@ class SshRsyncReleaseGateway:
     def rollback(self) -> DeploymentReceipt:
         self._validate_local_credentials()
         output = self._ssh_capture(
-            f"set -eu; {self._home_assignment('root', self._settings.deployment_root)} "
+            f"set -eu; {_atomic_symlink_replacer()} "
+            f"{self._home_assignment('root', self._settings.deployment_root)} "
             f"{self._home_assignment('public', self._settings.public_path)} "
             'current=$(readlink "$root/current"); previous=$(readlink "$root/previous"); '
             'test -n "$current"; test -n "$previous"; '
             'ln -sfn "$previous" "$root/current.next"; '
-            'mv -Tf "$root/current.next" "$root/current"; '
+            'replace_symlink_atomically "$root/current.next" "$root/current"; '
             'ln -sfn "$current" "$root/previous.next"; '
-            'mv -Tf "$root/previous.next" "$root/previous"; '
+            'replace_symlink_atomically "$root/previous.next" "$root/previous"; '
             'target="$root/$previous"; '
-            'ln -sfn "$target" "$public.next"; mv -Tf "$public.next" "$public"; '
+            'ln -sfn "$target" "$public.next"; '
+            'replace_symlink_atomically "$public.next" "$public"; '
             'basename "$previous"'
         )
         release_id = output.strip().splitlines()[-1]
@@ -219,3 +224,19 @@ class SshRsyncReleaseGateway:
 def _validate_remote_identifier(value: str, label: str) -> None:
     if not _REMOTE_ID.fullmatch(value):
         raise ValueError(f"Unsafe {label}: {value!r}")
+
+
+def _atomic_symlink_replacer() -> str:
+    """Return a fail-closed shell helper for atomic symlink replacement."""
+
+    return (
+        "remote_platform=$(uname -s); "
+        "replace_symlink_atomically() { "
+        'case "$remote_platform" in '
+        'Linux) mv -Tf "$1" "$2" ;; '
+        'FreeBSD) mv -fh "$1" "$2" ;; '
+        '*) echo "Unsupported remote platform for atomic symlink replacement: '
+        '$remote_platform" >&2; return 1 ;; '
+        "esac; "
+        "};"
+    )

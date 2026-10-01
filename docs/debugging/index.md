@@ -117,6 +117,36 @@ variable has type "LocalReleaseGateway"
 
 **Результат:** mypy проверил 23 исходных файла без ошибок.
 
+## Ошибка 5. `configure-pages` не получил доступ к Pages API
+
+**Текст ошибки:**
+
+```text
+Get Pages site failed.
+Resource not accessible by integration
+```
+
+**Гипотеза:** Pages не включён либо токен job не имеет разрешения читать
+конфигурацию Pages.
+
+**Проверка:** в настройках репозитория источником публикации был выбран GitHub
+Actions. Проверка `.github/workflows/publish.yml` показала, что job
+`build-pages` наследовал только `contents: read`. Для приватного репозитория
+запрос `GET /repos/{owner}/{repo}/pages` также требует `pages: read`.
+
+**Причина:** `actions/configure-pages` обращался к Pages API через
+`GITHUB_TOKEN`, которому в job `build-pages` не было выдано разрешение
+`pages: read`.
+
+**Решение:** для `build-pages` явно добавлены минимальные разрешения
+`contents: read` и `pages: read`. Параметр `enablement` не применялся, потому
+что он требует токен, отличный от стандартного `GITHUB_TOKEN`.
+
+**Результат:** повторный workflow опубликовал коммит `0c3ae30` по адресу
+<https://whoamititle.github.io/mkdocs-deployment-lab/>. Удалённая проверка
+подтвердила 17 страниц, отсутствие битых навигационных ссылок и внешних
+runtime-ресурсов, доступность поискового индекса и локальных ресурсов KaTeX.
+
 ## Контрольный результат
 
 После исправлений полный pipeline завершился успешно:

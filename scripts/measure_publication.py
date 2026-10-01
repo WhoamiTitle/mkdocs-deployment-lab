@@ -482,7 +482,7 @@ def _append_csv(path: Path, fieldnames: tuple[str, ...], row: dict[str, str]) ->
         if existing_header != list(fieldnames):
             raise ValueError(f"unexpected CSV header in {path}")
     with path.open("a", encoding="utf-8", newline="") as destination:
-        writer = csv.DictWriter(destination, fieldnames=fieldnames)
+        writer = csv.DictWriter(destination, fieldnames=fieldnames, lineterminator="\n")
         if write_header:
             writer.writeheader()
         writer.writerow(row)

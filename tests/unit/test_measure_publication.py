@@ -48,3 +48,4 @@ def test_append_csv_writes_stable_schema(tmp_path: Path) -> None:
         rows = list(csv.DictReader(source))
     assert rows[0]["duration_seconds"] == "1.250000"
     assert rows[0]["artifact_size_bytes"] == "100"
+    assert b"\r\n" not in output.read_bytes()

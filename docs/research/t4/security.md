@@ -7,11 +7,19 @@ workflow секреты основного репозитория, изменё�
 чужой сервер. Поэтому workflow для внешнего pull request выполняет проверки и
 сборку без deploy-секретов.
 
+GitHub прямо указывает, что кроме ограниченного `GITHUB_TOKEN` секреты не
+передаются runner при событии из fork. Источник:
+[Using secrets in GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets#using-secrets-in-a-workflow).
+
 ## Фиксация Actions по SHA
 
 Тег или ветка Git могут быть перемещены на другой коммит. Полный SHA связывает
 workflow с конкретным просмотренным содержимым Action. Обновление Action в этом
 случае становится отдельным видимым изменением репозитория.
+
+GitHub называет полный commit SHA единственной неизменяемой ссылкой на Action.
+Все внешние actions в workflow этого проекта закреплены 40-символьными SHA.
+Источник: [Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions).
 
 ## Supply chain атака
 
@@ -26,6 +34,12 @@ workflow с конкретным просмотренным содержимым
 отпечаток получают по доверенному каналу и сверяют до добавления в настройки
 репозитория. Отключение `StrictHostKeyChecking` лишает клиента защиты от
 подмены сервера.
+
+`ssh-keyscan` только получает предъявленный сетью ключ и сам не подтверждает
+его подлинность. Поэтому результат сканирования нужно сверить по независимому
+каналу, а CI запускать с `StrictHostKeyChecking=yes`. Источники:
+[ssh-keyscan](https://man.openbsd.org/ssh-keyscan) и
+[ssh_config](https://man.openbsd.org/ssh_config#StrictHostKeyChecking).
 
 ## Граница доступа deploy-ключа
 

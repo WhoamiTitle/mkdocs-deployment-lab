@@ -1,1 +1,1 @@
-platform,run,started_at,healthcheck_at,duration_seconds,result,commit_sha,notes
+platform,method,run,started_at_utc,healthcheck_at_utc,duration_seconds,result,commit_sha,url,measurement_scope,artifact_size_bytes,file_count,notes

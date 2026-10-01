@@ -37,7 +37,7 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 
 [tool.codespell]
 skip = ".git,.venv,site,.local-deploy,docs/assets/vendor"

@@ -51,6 +51,8 @@ _PUBLICATION_FIELDS = (
     "duration_seconds",
     "result",
     "commit_sha",
+    "release_id",
+    "release_built_at_utc",
     "url",
     "measurement_scope",
     "artifact_size_bytes",
@@ -101,6 +103,8 @@ class PublicationMeasurement:
     duration_seconds: float
     result: str
     commit_sha: str
+    release_id: str
+    release_built_at_utc: datetime
     url: str
     measurement_scope: str
     artifact_size_bytes: int | None
@@ -117,6 +121,8 @@ class PublicationMeasurement:
             "duration_seconds": _format_duration(self.duration_seconds),
             "result": self.result,
             "commit_sha": self.commit_sha,
+            "release_id": self.release_id,
+            "release_built_at_utc": _format_datetime(self.release_built_at_utc),
             "url": self.url,
             "measurement_scope": self.measurement_scope,
             "artifact_size_bytes": _format_optional_int(self.artifact_size_bytes),
@@ -286,6 +292,8 @@ def _measure_local(args: argparse.Namespace) -> int:
                     duration_seconds=publication_duration,
                     result="success",
                     commit_sha=release.commit_sha,
+                    release_id=release.release_id,
+                    release_built_at_utc=release.built_at,
                     url=base_url,
                     measurement_scope="deploy-command-to-healthcheck",
                     artifact_size_bytes=artifact_size,
@@ -340,6 +348,8 @@ def _observe_publication(args: argparse.Namespace) -> int:
             release = _fetch_release(base_url)
             if release.commit_sha != expected_commit:
                 last_problem = f"published commit is still {release.commit_sha}"
+            elif release.built_at < started_at:
+                last_problem = f"published release {release.release_id} predates observation start"
             else:
                 _verify_root_page(base_url, expected_commit)
                 healthcheck_at = datetime.now(UTC)
@@ -352,6 +362,8 @@ def _observe_publication(args: argparse.Namespace) -> int:
                     duration_seconds=(healthcheck_at - started_at).total_seconds(),
                     result="success",
                     commit_sha=expected_commit,
+                    release_id=release.release_id,
+                    release_built_at_utc=release.built_at,
                     url=base_url,
                     measurement_scope="push-start-to-healthcheck",
                     artifact_size_bytes=None,

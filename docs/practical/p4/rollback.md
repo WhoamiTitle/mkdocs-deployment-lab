@@ -14,3 +14,26 @@ Production использует две ссылки:
 
 Если процесс остановлен во время загрузки staging-каталога, `current` ещё не
 изменён и пользователи продолжают получать предыдущий релиз.
+
+## Изолированная проверка
+
+Сценарии с намеренной ошибкой запускаются только по адресу
+`mkdocs-deployment-lab-sandbox`. Скрипт проверяет фиксированные sandbox-пути до
+SSH-подключения и удаляет их только при двойном разрешении через аргумент
+`--cleanup` и переменную `ALLOW_DESTRUCTIVE_TEST_CLEANUP=1`:
+
+```bash
+export HELIOS_HOST=helios.cs.ifmo.ru
+export HELIOS_USER=s507353
+export HELIOS_PORT=2222
+export HELIOS_SSH_KEY_PATH="$HOME/.ssh/mkdocs-deployment-lab-helios"
+export HELIOS_KNOWN_HOSTS_PATH="$PWD/.secrets/known_hosts"
+ALLOW_DESTRUCTIVE_TEST_CLEANUP=1 make test-helios-sandbox
+```
+
+Проверяются ручной и автоматический rollback, повтор существующего release ID,
+частичная загрузка без переключения, невалидный новый релиз, очистка preview и
+доступность основного production-сайта после всех операций.
+Тот же сценарий запускается в GitHub через ручной workflow
+`Verify Helios resilience`, который требует контрольную строку
+`mkdocs-deployment-lab-sandbox`.

@@ -2,8 +2,10 @@ PYTHON ?= .venv/bin/python
 SITE_DIR ?= site
 LOCAL_STATE_ROOT ?= .local-deploy/state
 LOCAL_PUBLIC_PATH ?= .local-deploy/public-site
+HELIOS_SANDBOX_BASE_URL ?= https://se.ifmo.ru/~s507353/mkdocs-deployment-lab-sandbox/
+HELIOS_PRODUCTION_URL ?= https://se.ifmo.ru/~s507353/mkdocs-deployment-lab/
 
-.PHONY: setup lint typecheck test build offline-check check serve deploy-local preview-local rollback-local benchmark-local
+.PHONY: setup lint typecheck test build offline-check check serve deploy-local preview-local rollback-local benchmark-local test-helios-sandbox
 
 setup:
 	python3 -m venv .venv
@@ -55,3 +57,9 @@ benchmark-local:
 	$(PYTHON) -m scripts.measure_publication local \
 		--runs "$${RUNS:-5}" \
 		--run-start "$${RUN_START:-1}"
+
+test-helios-sandbox:
+	$(PYTHON) -m scripts.verify_helios_resilience \
+		--base-url "$(HELIOS_SANDBOX_BASE_URL)" \
+		--production-url "$(HELIOS_PRODUCTION_URL)" \
+		--cleanup

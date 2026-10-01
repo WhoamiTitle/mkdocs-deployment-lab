@@ -110,5 +110,6 @@ Push в другую ветку создаёт адрес
 из `public_html` на каталог внутри `~/.deployments` вернула HTTP 200 и
 ожидаемый marker через nginx. После проверки временные файл, ссылка и каталоги
 были удалены, а сайт портфолио остался доступен. Отдельный deploy-ключ,
-Variables и Secrets добавлены в GitHub; `HELIOS_ENABLED` остаётся равным
-`false` до контрольного прохождения CI и GitHub Pages без публикации на Helios.
+Variables и Secrets добавлены в GitHub. После контрольного запуска без Helios
+переменная `HELIOS_ENABLED` переключена в `true`; первый production deploy и
+preview ветки `test/helios-preview` завершились успешно.

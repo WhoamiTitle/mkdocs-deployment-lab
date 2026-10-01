@@ -17,3 +17,19 @@ preview-releases/<branch-slug>/<release-id>/
 
 Публичная ссылка `previews/<branch-slug>` атомарно переключается на последнюю
 сборку соответствующей ветки.
+
+## Очистка
+
+Workflow `Clean Helios preview` запускается вручную с точным именем ветки или
+автоматически после удаления ветки. Команда требует повторного подтверждения,
+удаляет только ссылку и каталоги одного вычисленного slug и завершается
+проверкой HTTP 404:
+
+```bash
+python -m publication_pipeline cleanup-preview-ssh \
+  --branch feature/report \
+  --confirm-branch feature/report
+```
+
+Совпадение `--branch` и `--confirm-branch` обязательно; production-релизы эта
+операция не затрагивает.

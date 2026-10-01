@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final
@@ -12,7 +14,9 @@ from typing import Final
 from publication_pipeline.application.errors import PublicationError
 from publication_pipeline.application.models import (
     DeploymentReceipt,
+    PreviewCleanupReceipt,
     Release,
+    RsyncTransferMetrics,
     validate_remote_relative_path,
 )
 
@@ -76,7 +80,7 @@ class SshRsyncReleaseGateway:
             'mkdir -p "$root/releases" "$root/preview-releases" "$root/shared-previews"; '
             'rm -rf -- "$stage"; mkdir -p "$stage"'
         )
-        self._rsync(source, staging_relative)
+        transfer = self._rsync(source, staging_relative)
         self._ssh(
             f"set -eu; {_atomic_symlink_replacer()} "
             f"{self._home_assignment('root', self._settings.deployment_root)} "
@@ -100,6 +104,7 @@ class SshRsyncReleaseGateway:
         return DeploymentReceipt(
             release_id=release.release_id,
             location=str(self._settings.public_path),
+            transfer=transfer,
         )
 
     def publish_preview(
@@ -120,7 +125,7 @@ class SshRsyncReleaseGateway:
             f'mkdir -p "$root/preview-releases/{branch_slug}" "$root/shared-previews"; '
             'rm -rf -- "$stage"; mkdir -p "$stage"'
         )
-        self._rsync(source, staging_relative)
+        transfer = self._rsync(source, staging_relative)
         self._ssh(
             f"set -eu; {_atomic_symlink_replacer()} "
             f"{self._home_assignment('root', self._settings.deployment_root)} "
@@ -136,6 +141,7 @@ class SshRsyncReleaseGateway:
         return DeploymentReceipt(
             release_id=release.release_id,
             location=f"{self._settings.public_path}/previews/{branch_slug}",
+            transfer=transfer,
         )
 
     def rollback(self) -> DeploymentReceipt:
@@ -157,6 +163,32 @@ class SshRsyncReleaseGateway:
         )
         release_id = output.strip().splitlines()[-1]
         return DeploymentReceipt(release_id=release_id, location=str(self._settings.public_path))
+
+    def cleanup_preview(self, branch_slug: str) -> PreviewCleanupReceipt:
+        self._validate_local_credentials()
+        _validate_remote_identifier(branch_slug, "branch slug")
+        output = self._ssh_capture(
+            f"set -eu; {self._home_assignment('root', self._settings.deployment_root)} "
+            f'branch="$root/preview-releases/{branch_slug}"; '
+            f'link="$root/shared-previews/{branch_slug}"; '
+            'if [ -e "$link" ] && [ ! -L "$link" ]; then '
+            '  echo "Refusing to remove a preview path that is not a symlink" >&2; '
+            "  exit 1; "
+            "fi; "
+            "count=0; "
+            'if [ -d "$branch" ]; then '
+            '  for release in "$branch"/*; do '
+            '    [ -d "$release" ] || continue; count=$((count + 1)); '
+            "  done; "
+            "fi; "
+            'rm -f -- "$link"; rm -rf -- "$branch"; printf "%s\\n" "$count"'
+        )
+        removed_release_count = int(output.strip().splitlines()[-1])
+        return PreviewCleanupReceipt(
+            branch_slug=branch_slug,
+            location=f"{self._settings.public_path}/previews/{branch_slug}",
+            removed_release_count=removed_release_count,
+        )
 
     def _validate_local_credentials(self) -> None:
         if not self._settings.private_key.is_file():
@@ -198,23 +230,32 @@ class SshRsyncReleaseGateway:
         )
         return process.stdout
 
-    def _rsync(self, source: Path, destination: PurePosixPath) -> None:
+    def _rsync(self, source: Path, destination: PurePosixPath) -> RsyncTransferMetrics:
         ssh_transport = " ".join(shlex.quote(value) for value in self._ssh_arguments())
         remote = f"{self._settings.user}@{self._settings.host}:{destination.as_posix()}/"
-        subprocess.run(
+        started_at = time.perf_counter()
+        process = subprocess.run(
             [
                 "rsync",
                 "--archive",
                 "--compress",
                 "--delete-delay",
-                "--human-readable",
+                "--stats",
                 "-e",
                 ssh_transport,
                 f"{source}/",
                 remote,
             ],
-            check=True,
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LC_ALL": "C"},
         )
+        duration_seconds = time.perf_counter() - started_at
+        if process.returncode != 0:
+            detail = process.stderr.strip() or process.stdout.strip() or "no diagnostic output"
+            raise PublicationError(f"rsync failed with exit code {process.returncode}: {detail}")
+        return _parse_rsync_metrics(process.stdout, duration_seconds=duration_seconds)
 
     @staticmethod
     def _home_assignment(name: str, relative_path: PurePosixPath) -> str:
@@ -240,3 +281,28 @@ def _atomic_symlink_replacer() -> str:
         "esac; "
         "};"
     )
+
+
+def _parse_rsync_metrics(output: str, *, duration_seconds: float) -> RsyncTransferMetrics:
+    return RsyncTransferMetrics(
+        duration_seconds=duration_seconds,
+        file_count=_rsync_stat(output, "Number of files"),
+        transferred_file_count=_rsync_stat(
+            output,
+            "Number of regular files transferred",
+            fallback_label="Number of files transferred",
+        ),
+        total_file_size_bytes=_rsync_stat(output, "Total file size"),
+        transferred_file_size_bytes=_rsync_stat(output, "Total transferred file size"),
+        sent_bytes=_rsync_stat(output, "Total bytes sent"),
+        received_bytes=_rsync_stat(output, "Total bytes received"),
+    )
+
+
+def _rsync_stat(output: str, label: str, *, fallback_label: str | None = None) -> int:
+    labels = (label,) if fallback_label is None else (label, fallback_label)
+    pattern = "|".join(re.escape(item) for item in labels)
+    match = re.search(rf"^(?:{pattern}):\s*([0-9,]+)", output, flags=re.MULTILINE)
+    if match is None:
+        raise PublicationError(f"rsync output has no {label!r} statistic")
+    return int(match.group(1).replace(",", ""))

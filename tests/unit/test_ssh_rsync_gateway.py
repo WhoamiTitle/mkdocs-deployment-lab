@@ -6,11 +6,16 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from publication_pipeline.application.models import Release, SourceRevision
+from publication_pipeline.application.models import (
+    Release,
+    RsyncTransferMetrics,
+    SourceRevision,
+)
 from publication_pipeline.infrastructure.ssh_rsync_gateway import (
     SshRsyncReleaseGateway,
     SshRsyncSettings,
     _atomic_symlink_replacer,
+    _parse_rsync_metrics,
 )
 
 
@@ -18,6 +23,7 @@ class _RecordingSshGateway(SshRsyncReleaseGateway):
     def __init__(self, settings: SshRsyncSettings) -> None:
         super().__init__(settings)
         self.commands: list[str] = []
+        self.capture_output = "previous-release\n"
 
     def _validate_local_credentials(self) -> None:
         return
@@ -27,10 +33,18 @@ class _RecordingSshGateway(SshRsyncReleaseGateway):
 
     def _ssh_capture(self, script: str) -> str:
         self.commands.append(script)
-        return "previous-release\n"
+        return self.capture_output
 
-    def _rsync(self, source: Path, destination: PurePosixPath) -> None:
-        return
+    def _rsync(self, source: Path, destination: PurePosixPath) -> RsyncTransferMetrics:
+        return RsyncTransferMetrics(
+            duration_seconds=0.25,
+            file_count=10,
+            transferred_file_count=8,
+            total_file_size_bytes=1000,
+            transferred_file_size_bytes=800,
+            sent_bytes=400,
+            received_bytes=40,
+        )
 
 
 @pytest.mark.parametrize(
@@ -111,3 +125,60 @@ def test_all_link_switches_use_platform_aware_atomic_replacer(tmp_path: Path) ->
     assert 'replace_symlink_atomically "$root/current.next" "$root/current"' in rollback_command
     assert 'replace_symlink_atomically "$root/previous.next" "$root/previous"' in rollback_command
     assert 'replace_symlink_atomically "$public.next" "$public"' in rollback_command
+
+
+def test_rsync_statistics_are_parsed_as_exact_bytes() -> None:
+    output = """
+Number of files: 131 (reg: 120, dir: 11)
+Number of regular files transferred: 120
+Total file size: 4,509,378 bytes
+Total transferred file size: 4,509,378 bytes
+Total bytes sent: 1,234,567
+Total bytes received: 8,765
+"""
+
+    metrics = _parse_rsync_metrics(output, duration_seconds=1.25)
+
+    assert metrics.duration_seconds == 1.25
+    assert metrics.file_count == 131
+    assert metrics.transferred_file_count == 120
+    assert metrics.total_file_size_bytes == 4_509_378
+    assert metrics.transferred_file_size_bytes == 4_509_378
+    assert metrics.sent_bytes == 1_234_567
+    assert metrics.received_bytes == 8_765
+
+
+def test_rsync_statistics_accept_legacy_transferred_file_label() -> None:
+    output = """
+Number of files: 2
+Number of files transferred: 1
+Total file size: 100 bytes
+Total transferred file size: 80 bytes
+Total bytes sent: 90
+Total bytes received: 10
+"""
+
+    metrics = _parse_rsync_metrics(output, duration_seconds=0.5)
+
+    assert metrics.transferred_file_count == 1
+
+
+def test_cleanup_preview_removes_only_validated_branch_paths(tmp_path: Path) -> None:
+    settings = SshRsyncSettings.create(
+        host="helios.example.edu",
+        user="student",
+        port=2222,
+        private_key=tmp_path / "key",
+        known_hosts=tmp_path / "known_hosts",
+        deployment_root=".deployments/mkdocs-deployment-lab",
+        public_path="public_html/mkdocs-deployment-lab",
+    )
+    gateway = _RecordingSshGateway(settings)
+    gateway.capture_output = "2\n"
+
+    receipt = gateway.cleanup_preview("feature-report-abcd1234")
+
+    assert receipt.branch_slug == "feature-report-abcd1234"
+    assert receipt.removed_release_count == 2
+    assert "shared-previews/feature-report-abcd1234" in gateway.commands[-1]
+    assert "preview-releases/feature-report-abcd1234" in gateway.commands[-1]

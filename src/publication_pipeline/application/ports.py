@@ -6,6 +6,7 @@ from typing import Protocol
 from publication_pipeline.application.models import (
     DeploymentReceipt,
     HttpResponse,
+    PreviewCleanupReceipt,
     Release,
     SourceRevision,
 )
@@ -35,6 +36,11 @@ class ReleasePublisher(Protocol):
 
     def rollback(self) -> DeploymentReceipt:
         """Swap the current and previous production releases."""
+
+
+class PreviewCleaner(Protocol):
+    def cleanup_preview(self, branch_slug: str) -> PreviewCleanupReceipt:
+        """Remove the public link and immutable releases for one preview branch."""
 
 
 class HttpClient(Protocol):

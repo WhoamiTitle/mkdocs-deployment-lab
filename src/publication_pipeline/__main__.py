@@ -7,12 +7,18 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from publication_pipeline.application.build_release import BuildRelease, load_release
+from publication_pipeline.application.cleanup_preview import CleanupPreview
 from publication_pipeline.application.deploy_release import DeployRelease
 from publication_pipeline.application.errors import PublicationError
-from publication_pipeline.application.models import DeploymentReceipt, branch_to_slug
+from publication_pipeline.application.models import (
+    DeploymentReceipt,
+    PreviewCleanupReceipt,
+    branch_to_slug,
+)
 from publication_pipeline.application.publish_preview import PublishPreview
 from publication_pipeline.application.rollback_release import RollbackRelease
 from publication_pipeline.application.verify_offline_assets import VerifyOfflineAssets
@@ -59,6 +65,14 @@ def _create_parser() -> argparse.ArgumentParser:
     rollback_local.add_argument("--state-root", required=True)
     rollback_local.add_argument("--public-path", required=True)
 
+    cleanup_preview_local = subparsers.add_parser(
+        "cleanup-preview-local",
+        help="remove one local branch preview",
+    )
+    cleanup_preview_local.add_argument("--state-root", required=True)
+    cleanup_preview_local.add_argument("--public-path", required=True)
+    _add_preview_cleanup_arguments(cleanup_preview_local)
+
     deploy_ssh = subparsers.add_parser("deploy-ssh", help="publish production over SSH")
     _add_ssh_arguments(deploy_ssh, include_site=True)
 
@@ -68,6 +82,13 @@ def _create_parser() -> argparse.ArgumentParser:
 
     rollback_ssh = subparsers.add_parser("rollback-ssh", help="rollback production over SSH")
     _add_ssh_arguments(rollback_ssh, include_site=False)
+
+    cleanup_preview_ssh = subparsers.add_parser(
+        "cleanup-preview-ssh",
+        help="remove one branch preview over SSH",
+    )
+    _add_ssh_arguments(cleanup_preview_ssh, include_site=False)
+    _add_preview_cleanup_arguments(cleanup_preview_ssh)
 
     healthcheck = subparsers.add_parser("healthcheck", help="verify a published HTML page")
     healthcheck.add_argument("--url", required=True)
@@ -105,17 +126,31 @@ def _add_ssh_arguments(parser: argparse.ArgumentParser, *, include_site: bool) -
     parser.add_argument("--public-path", default=os.getenv("HELIOS_PUBLIC_PATH"))
 
 
+def _add_preview_cleanup_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--branch", required=True)
+    parser.add_argument("--confirm-branch", required=True)
+
+
 def _execute(args: argparse.Namespace) -> int:
     command = _required_str(args, "command")
     if command == "build":
         repository_root = Path(_required_str(args, "repository_root")).resolve()
         config_file = repository_root / _required_str(args, "config_file")
         site_dir = Path(_required_str(args, "site_dir")).resolve()
+        started_at = time.perf_counter()
         release = BuildRelease(
             MkDocsGateway(repository_root, config_file),
             GitGateway(repository_root),
         ).execute(site_dir)
-        _print_json(release.as_dict())
+        artifact_size_bytes, file_count = _artifact_metrics(site_dir)
+        _print_json(
+            {
+                **release.as_dict(),
+                "duration_seconds": time.perf_counter() - started_at,
+                "artifact_size_bytes": artifact_size_bytes,
+                "file_count": file_count,
+            }
+        )
         return 0
 
     if command == "branch-slug":
@@ -127,6 +162,7 @@ def _execute(args: argparse.Namespace) -> int:
         release_file = _optional_str(args, "release_file")
         if release_file is not None:
             expected_texts.append(load_release(Path(release_file).parent).marker)
+        started_at = time.perf_counter()
         result = VerifyRelease(UrllibHttpGateway()).execute(
             _required_str(args, "url"),
             tuple(dict.fromkeys(expected_texts)),
@@ -139,6 +175,7 @@ def _execute(args: argparse.Namespace) -> int:
                 "status_code": result.status_code,
                 "attempts": result.attempts,
                 "checked_texts": list(result.checked_texts),
+                "duration_seconds": time.perf_counter() - started_at,
             }
         )
         return 0
@@ -159,6 +196,14 @@ def _execute(args: argparse.Namespace) -> int:
             Path(_required_str(args, "state_root")),
             Path(_required_str(args, "public_path")),
         )
+        if command == "cleanup-preview-local":
+            _print_cleanup_receipt(
+                CleanupPreview(local_gateway).execute(
+                    _required_str(args, "branch"),
+                    _required_str(args, "confirm_branch"),
+                )
+            )
+            return 0
         if command == "rollback-local":
             _print_receipt(RollbackRelease(local_gateway).execute())
             return 0
@@ -179,6 +224,14 @@ def _execute(args: argparse.Namespace) -> int:
 
     if command.endswith("-ssh"):
         ssh_gateway = SshRsyncReleaseGateway(_ssh_settings(args))
+        if command == "cleanup-preview-ssh":
+            _print_cleanup_receipt(
+                CleanupPreview(ssh_gateway).execute(
+                    _required_str(args, "branch"),
+                    _required_str(args, "confirm_branch"),
+                )
+            )
+            return 0
         if command == "rollback-ssh":
             _print_receipt(RollbackRelease(ssh_gateway).execute())
             return 0
@@ -250,17 +303,33 @@ def _string_list(args: argparse.Namespace, name: str) -> list[str]:
 
 
 def _print_receipt(receipt: DeploymentReceipt) -> None:
+    value: dict[str, object] = {
+        "release_id": receipt.release_id,
+        "location": receipt.location,
+        "previous_release_id": receipt.previous_release_id,
+    }
+    if receipt.transfer is not None:
+        value["transfer"] = receipt.transfer.as_dict()
+    _print_json(value)
+
+
+def _print_cleanup_receipt(receipt: PreviewCleanupReceipt) -> None:
     _print_json(
         {
-            "release_id": receipt.release_id,
+            "branch_slug": receipt.branch_slug,
             "location": receipt.location,
-            "previous_release_id": receipt.previous_release_id,
+            "removed_release_count": receipt.removed_release_count,
         }
     )
 
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def _artifact_metrics(site_dir: Path) -> tuple[int, int]:
+    files = tuple(path for path in site_dir.rglob("*") if path.is_file())
+    return sum(path.stat().st_size for path in files), len(files)
 
 
 if __name__ == "__main__":

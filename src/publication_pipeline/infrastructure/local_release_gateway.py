@@ -12,7 +12,11 @@ from publication_pipeline.application.errors import (
     RollbackUnavailableError,
     UnsafePathError,
 )
-from publication_pipeline.application.models import DeploymentReceipt, Release
+from publication_pipeline.application.models import (
+    DeploymentReceipt,
+    PreviewCleanupReceipt,
+    Release,
+)
 
 
 class LocalReleaseGateway:
@@ -88,6 +92,26 @@ class LocalReleaseGateway:
             release_id=release_id,
             location=str(self._public_path),
             previous_release_id=_target_release_id(current_target),
+        )
+
+    def cleanup_preview(self, branch_slug: str) -> PreviewCleanupReceipt:
+        preview_link = self._state_root / "shared-previews" / branch_slug
+        branch_root = self._state_root / "preview-releases" / branch_slug
+        if preview_link.exists() and not preview_link.is_symlink():
+            raise UnsafePathError(f"Preview path is not a symlink: {preview_link}")
+
+        removed_release_count = 0
+        if branch_root.is_dir():
+            removed_release_count = sum(path.is_dir() for path in branch_root.iterdir())
+        if preview_link.is_symlink():
+            preview_link.unlink()
+        if branch_root.exists():
+            shutil.rmtree(branch_root)
+
+        return PreviewCleanupReceipt(
+            branch_slug=branch_slug,
+            location=str(self._public_path / "previews" / branch_slug),
+            removed_release_count=removed_release_count,
         )
 
     def _prepare_layout(self) -> None:

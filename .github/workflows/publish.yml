@@ -43,12 +43,22 @@ jobs:
       - name: Build GitHub Pages artifact
         env:
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-        run: python -m publication_pipeline build --site-dir site
+        run: >-
+          python -m publication_pipeline build --site-dir site
+          | tee "$RUNNER_TEMP/pages-build.json"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: site/
+
+      - name: Upload Pages measurement receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pages-measurement-${{ github.run_id }}
+          path: ${{ runner.temp }}/pages-build.json
+          if-no-files-found: error
+          retention-days: 30
 
   deploy-pages:
     if: github.ref == 'refs/heads/main'
@@ -101,7 +111,9 @@ jobs:
       - name: Build for Helios production URL
         env:
           SITE_URL: ${{ vars.HELIOS_BASE_URL }}
-        run: python -m publication_pipeline build --site-dir site
+        run: >-
+          python -m publication_pipeline build --site-dir site
+          | tee "$RUNNER_TEMP/helios-build.json"
 
       - name: Deploy production release
         id: deploy
@@ -113,7 +125,9 @@ jobs:
           HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
           HELIOS_SSH_KEY_PATH: .secrets/helios_key
           HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
-        run: python -m publication_pipeline deploy-ssh --site-dir site
+        run: >-
+          python -m publication_pipeline deploy-ssh --site-dir site
+          | tee "$RUNNER_TEMP/helios-deploy.json"
 
       - name: Verify production release
         env:
@@ -124,6 +138,7 @@ jobs:
           --release-file site/release.json
           --attempts 5
           --delay-seconds 5
+          | tee "$RUNNER_TEMP/helios-healthcheck.json"
 
       - name: Roll back after a failed production healthcheck
         if: failure() && steps.deploy.outcome == 'success'
@@ -136,6 +151,18 @@ jobs:
           HELIOS_SSH_KEY_PATH: .secrets/helios_key
           HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
         run: python -m publication_pipeline rollback-ssh
+
+      - name: Upload Helios measurement receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: helios-measurement-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/helios-build.json
+            ${{ runner.temp }}/helios-deploy.json
+            ${{ runner.temp }}/helios-healthcheck.json
+          if-no-files-found: warn
+          retention-days: 30
 
   deploy-helios-preview:
     if: github.ref != 'refs/heads/main' && vars.HELIOS_ENABLED == 'true'
@@ -181,7 +208,9 @@ jobs:
       - name: Build for preview URL
         env:
           SITE_URL: ${{ steps.preview.outputs.url }}
-        run: python -m publication_pipeline build --site-dir site
+        run: >-
+          python -m publication_pipeline build --site-dir site
+          | tee "$RUNNER_TEMP/preview-build.json"
 
       - name: Deploy preview release
         env:
@@ -196,6 +225,7 @@ jobs:
           python -m publication_pipeline preview-ssh
           --site-dir site
           --branch "$GITHUB_REF_NAME"
+          | tee "$RUNNER_TEMP/preview-deploy.json"
 
       - name: Verify preview release
         run: >-
@@ -204,3 +234,4 @@ jobs:
           --release-file site/release.json
           --attempts 5
           --delay-seconds 5
+          | tee "$RUNNER_TEMP/preview-healthcheck.json"

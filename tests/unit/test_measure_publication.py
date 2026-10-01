@@ -5,6 +5,7 @@ from pathlib import Path
 from scripts.measure_publication import (
     _BUILD_FIELDS,
     BuildMeasurement,
+    PublicationMeasurement,
     _append_csv,
     _normalized_base_url,
     parse_utc_datetime,
@@ -49,3 +50,29 @@ def test_append_csv_writes_stable_schema(tmp_path: Path) -> None:
     assert rows[0]["duration_seconds"] == "1.250000"
     assert rows[0]["artifact_size_bytes"] == "100"
     assert b"\r\n" not in output.read_bytes()
+
+
+def test_publication_measurement_keeps_release_identity() -> None:
+    timestamp = parse_utc_datetime("2026-10-02T00:00:00Z")
+    measurement = PublicationMeasurement(
+        platform="helios",
+        method="ssh-rsync",
+        run=1,
+        started_at_utc=timestamp,
+        healthcheck_at_utc=timestamp,
+        duration_seconds=1.0,
+        result="success",
+        commit_sha="a" * 40,
+        release_id="aaaaaaaaaaaa-20261002T000000Z",
+        release_built_at_utc=timestamp,
+        url="https://example.test/site/",
+        measurement_scope="workflow-dispatch-to-healthcheck",
+        artifact_size_bytes=100,
+        file_count=2,
+        notes="test",
+    )
+
+    row = measurement.as_csv_row()
+
+    assert row["release_id"] == "aaaaaaaaaaaa-20261002T000000Z"
+    assert row["release_built_at_utc"] == "2026-10-02T00:00:00.000Z"

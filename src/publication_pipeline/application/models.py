@@ -81,6 +81,40 @@ class DeploymentReceipt:
     release_id: str
     location: str
     previous_release_id: str | None = None
+    transfer: RsyncTransferMetrics | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RsyncTransferMetrics:
+    """Machine-readable transfer statistics reported by rsync."""
+
+    duration_seconds: float
+    file_count: int
+    transferred_file_count: int
+    total_file_size_bytes: int
+    transferred_file_size_bytes: int
+    sent_bytes: int
+    received_bytes: int
+
+    def as_dict(self) -> dict[str, int | float]:
+        return {
+            "duration_seconds": self.duration_seconds,
+            "file_count": self.file_count,
+            "transferred_file_count": self.transferred_file_count,
+            "total_file_size_bytes": self.total_file_size_bytes,
+            "transferred_file_size_bytes": self.transferred_file_size_bytes,
+            "sent_bytes": self.sent_bytes,
+            "received_bytes": self.received_bytes,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PreviewCleanupReceipt:
+    """Observable result of removing one branch preview."""
+
+    branch_slug: str
+    location: str
+    removed_release_count: int
 
 
 @dataclass(frozen=True, slots=True)

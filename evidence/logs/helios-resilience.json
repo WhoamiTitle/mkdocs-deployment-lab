@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "executed_at_utc": "2026-10-01T23:30:25.378591+00:00",
+  "commit_sha": "39b45a851aa94d8f8268aeed69d3af58ccb54523",
+  "branch": "test/helios-preview",
+  "sandbox": {
+    "deployment_root": ".deployments/mkdocs-deployment-lab-sandbox",
+    "public_path": "public_html/mkdocs-deployment-lab-sandbox",
+    "base_url": "https://se.ifmo.ru/~s507353/mkdocs-deployment-lab-sandbox/",
+    "removed_after_test": true
+  },
+  "scenarios": [
+    {
+      "name": "initial-deploy",
+      "result": "success",
+      "release_id": "39b45a851aa9-20261001T232859Z",
+      "rsync_duration_seconds": 3.231144708001011,
+      "rsync_sent_bytes": 1702218,
+      "rsync_received_bytes": 3094,
+      "transferred_file_size_bytes": 4577556
+    },
+    {
+      "name": "second-deploy",
+      "result": "success",
+      "release_id": "39b45a851aa9-20261001T232900Z",
+      "rsync_duration_seconds": 3.208609749999596,
+      "rsync_sent_bytes": 1702219,
+      "rsync_received_bytes": 3094,
+      "transferred_file_size_bytes": 4577556
+    },
+    {
+      "name": "manual-rollback",
+      "result": "success",
+      "release_id": "39b45a851aa9-20261001T232859Z",
+      "duration_seconds": 2.0223092920005
+    },
+    {
+      "name": "automatic-rollback-after-healthcheck-failure",
+      "result": "success",
+      "release_id": "39b45a851aa9-20261001T232859Z",
+      "duration_seconds": 1.9967365409993363
+    },
+    {
+      "name": "repeat-identical-release",
+      "result": "safe-failure",
+      "active_release_id": "39b45a851aa9-20261001T232859Z",
+      "error_type": "CalledProcessError"
+    },
+    {
+      "name": "interrupted-rsync-before-switch",
+      "result": "active-release-preserved",
+      "active_release_id": "39b45a851aa9-20261001T232859Z"
+    },
+    {
+      "name": "invalid-new-release",
+      "result": "active-release-preserved",
+      "active_release_id": "39b45a851aa9-20261001T232859Z",
+      "error_type": "CalledProcessError"
+    },
+    {
+      "name": "stale-preview-cleanup",
+      "result": "success",
+      "branch_slug": "test-helios-sandbox-cleanup-4894ed02",
+      "removed_release_count": 1
+    },
+    {
+      "name": "production-site-isolation",
+      "result": "success",
+      "url": "https://se.ifmo.ru/~s507353/mkdocs-deployment-lab/"
+    }
+  ]
+}

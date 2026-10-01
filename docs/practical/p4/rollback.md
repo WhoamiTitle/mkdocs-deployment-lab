@@ -37,3 +37,7 @@ ALLOW_DESTRUCTIVE_TEST_CLEANUP=1 make test-helios-sandbox
 Тот же сценарий запускается в GitHub через ручной workflow
 `Verify Helios resilience`, который требует контрольную строку
 `mkdocs-deployment-lab-sandbox`.
+
+Контрольный локальный запуск на commit `39b45a8` успешно проверил все сценарии.
+После записи JSON-доказательства sandbox был удалён; основной сайт и портфолио
+продолжили отвечать HTTP 200.

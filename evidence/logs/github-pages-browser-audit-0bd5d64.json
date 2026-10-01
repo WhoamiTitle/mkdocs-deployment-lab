@@ -1,0 +1,45 @@
+{
+  "checked_at_utc": "2026-10-01T21:43:11.549Z",
+  "release": {
+    "release_id": "0bd5d64c2a8f-20261001T213611Z",
+    "commit_sha": "0bd5d64c2a8f9b7b0faa7ccad091d82961b68c7b",
+    "dirty": false
+  },
+  "tool": {
+    "playwright": "1.61.1",
+    "browser": "Chromium 149.0.7827.55",
+    "service_workers": "blocked",
+    "browser_cache": "fresh context"
+  },
+  "network_policy": {
+    "allowed_origin": "https://whoamititle.github.io",
+    "other_http_origins": "blocked"
+  },
+  "page": {
+    "url": "https://whoamititle.github.io/mkdocs-deployment-lab/experiment/",
+    "status": 200,
+    "same_origin_requests": 16,
+    "unique_same_origin_requests": 16,
+    "external_requests": 0,
+    "failed_requests": 0,
+    "page_and_search_transfer_bytes": 229851,
+    "resource_entries": 12
+  },
+  "checks": {
+    "arithmatex_nodes": 1,
+    "katex_nodes": 1,
+    "katex_font_ready": true,
+    "font_requests": [
+      "/mkdocs-deployment-lab/assets/vendor/katex/fonts/KaTeX_Math-Italic.woff2",
+      "/mkdocs-deployment-lab/assets/vendor/katex/fonts/KaTeX_Main-Regular.woff2"
+    ],
+    "svg_icons": 10,
+    "search_query": "развёртывание",
+    "search_matches": 4,
+    "search_result_links": 6
+  },
+  "notes": [
+    "The root release marker was verified separately by the publication observer.",
+    "An ASCII query initialized the search worker before the Cyrillic query because Playwright does not synthesize a physical Cyrillic keyboard layout."
+  ]
+}

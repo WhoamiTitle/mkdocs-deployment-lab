@@ -1,1 +1,3 @@
-mode,site_size_bytes,page_transfer_bytes,external_requests,formula_rendered,fonts_rendered,icons_rendered,notes
+mode,measured_at_utc,commit_sha,site_size_bytes,page_transfer_bytes,self_hosted_vendor_bytes,file_count,same_origin_requests,external_requests,formula_rendered,fonts_rendered,icons_rendered,search_query,search_matches,notes
+local-artifact,2026-10-01T21:30:00.855Z,3d28d598c8334f831973a0aca5f97d93b607823f,4509378,,1378961,131,,0,,,,,,artifact size ranged from 4509378 to 4509379 bytes across five strict builds
+github-pages-browser,2026-10-01T21:43:11.549Z,0bd5d64c2a8f9b7b0faa7ccad091d82961b68c7b,,229851,1378961,,16,0,true,true,true,развёртывание,4,fresh Chromium context; page plus search; compressed transfer size

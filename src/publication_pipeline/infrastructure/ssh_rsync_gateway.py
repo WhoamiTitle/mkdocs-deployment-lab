@@ -294,8 +294,12 @@ def _parse_rsync_metrics(output: str, *, duration_seconds: float) -> RsyncTransf
         ),
         total_file_size_bytes=_rsync_stat(output, "Total file size"),
         transferred_file_size_bytes=_rsync_stat(output, "Total transferred file size"),
-        sent_bytes=_rsync_stat(output, "Total bytes sent"),
-        received_bytes=_rsync_stat(output, "Total bytes received"),
+        sent_bytes=_rsync_stat(output, "Total bytes sent", fallback_label="Total sent"),
+        received_bytes=_rsync_stat(
+            output,
+            "Total bytes received",
+            fallback_label="Total received",
+        ),
     )
 
 

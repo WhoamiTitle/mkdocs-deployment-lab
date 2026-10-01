@@ -154,13 +154,15 @@ Number of files: 2
 Number of files transferred: 1
 Total file size: 100 bytes
 Total transferred file size: 80 bytes
-Total bytes sent: 90
-Total bytes received: 10
+Total sent: 90 B
+Total received: 10 B
 """
 
     metrics = _parse_rsync_metrics(output, duration_seconds=0.5)
 
     assert metrics.transferred_file_count == 1
+    assert metrics.sent_bytes == 90
+    assert metrics.received_bytes == 10
 
 
 def test_cleanup_preview_removes_only_validated_branch_paths(tmp_path: Path) -> None:

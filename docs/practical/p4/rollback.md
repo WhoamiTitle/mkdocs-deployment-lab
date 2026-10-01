@@ -41,3 +41,8 @@ ALLOW_DESTRUCTIVE_TEST_CLEANUP=1 make test-helios-sandbox
 Контрольный локальный запуск на commit `39b45a8` успешно проверил все сценарии.
 После записи JSON-доказательства sandbox был удалён; основной сайт и портфолио
 продолжили отвечать HTTP 200.
+
+Ручной GitHub Actions workflow повторил полный набор сценариев на commit
+`c14c580` и также завершился успешно. После него удалённые sandbox-пути
+отсутствовали, sandbox URL отвечал HTTP 404, а основной сайт и портфолио — HTTP
+200. Квитанция сохранена в `evidence/logs/helios-resilience-actions.json`.

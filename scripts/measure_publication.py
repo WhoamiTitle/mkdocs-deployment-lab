@@ -181,6 +181,14 @@ def _create_parser() -> argparse.ArgumentParser:
     observe.add_argument("--url", required=True)
     observe.add_argument("--expected-commit", required=True)
     observe.add_argument("--started-at-utc", required=True)
+    observe.add_argument(
+        "--measurement-scope",
+        choices=(
+            "push-start-to-healthcheck",
+            "workflow-dispatch-to-healthcheck",
+        ),
+        default="push-start-to-healthcheck",
+    )
     observe.add_argument("--output", default="evidence/measurements/deployment-times.csv")
     observe.add_argument("--attempts", type=int, default=90)
     observe.add_argument("--delay-seconds", type=float, default=2.0)
@@ -365,7 +373,7 @@ def _observe_publication(args: argparse.Namespace) -> int:
                     release_id=release.release_id,
                     release_built_at_utc=release.built_at,
                     url=base_url,
-                    measurement_scope="push-start-to-healthcheck",
+                    measurement_scope=cast(str, args.measurement_scope),
                     artifact_size_bytes=None,
                     file_count=None,
                     notes=f"release.json and root marker matched; attempts={attempt}",

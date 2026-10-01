@@ -26,15 +26,19 @@ workflow и Helios с SSH/rsync. Локальная реализация тог�
 | Метрика | Начало | Окончание | Назначение |
 |---|---|---|---|
 | Время сборки | запуск `publication_pipeline build` | создан проверенный `release.json` | отделить генерацию сайта от доставки |
-| Время публикации | начало push, запускающего pipeline | HTTP 200, контрольная строка и ожидаемый commit SHA доступны по публичному URL | сравнить пользовательскую задержку GitHub Pages и Helios |
+| Время публикации | начало push либо `created_at` ручного workflow | HTTP 200, контрольная строка и ожидаемый commit SHA доступны по публичному URL | сравнить пользовательскую задержку GitHub Pages и Helios |
 | Время `rsync` | запуск процесса `rsync` | процесс успешно завершён и статистика разобрана | отделить передачу от переключения и healthcheck |
 | Время отката | запуск rollback | healthcheck предыдущего release ID | проверить эксплуатационную устойчивость |
 
 Для удалённой площадки одно наблюдение определяется как
 
 \[
-t_{\text{publication}} = t_{\text{healthcheck}} - t_{\text{push}}.
+t_{\text{publication}} = t_{\text{healthcheck}} - t_{\text{start}}.
 \]
+
+Здесь \(t_{\text{start}}\) — локальная отметка непосредственно перед `git push`
+для push-серии либо серверное поле `created_at` из GitHub Actions API для
+`workflow_dispatch`.
 
 Диагностические метрики: размер артефакта в байтах, число файлов, фактически
 переданный размер, отправленные и полученные `rsync`-байты, число попыток
@@ -43,9 +47,10 @@ build, HTTP 200, совпадение SHA и свежего release ID, ноль
 внутренних ссылок и ноль внешних runtime-ресурсов для автономного режима.
 
 Локальная метрика начинается непосредственно перед deploy-командой, а удалённая
-— перед `git push`. Они имеют разные значения поля `measurement_scope` и не
-сравниваются между собой как равные. С GitHub Pages сопоставляется только
-Helios, запущенный тем же push и проверенный по тому же правилу.
+— перед `git push` или в момент регистрации ручного workflow на GitHub. Они
+имеют разные значения поля `measurement_scope` и не сравниваются между собой
+как равные. С GitHub Pages сопоставляется только Helios из того же workflow,
+для того же commit SHA и с той же границей измерения.
 
 ## Условия измерения
 
@@ -73,7 +78,8 @@ RUNS=5 RUN_START=1 make benchmark-local
 
 ## Наблюдение удалённой публикации
 
-Перед push или ручным dispatch фиксируется время. Наблюдатель опрашивает
+Перед push фиксируется локальное время, а для ручного dispatch берётся
+`created_at` соответствующего запуска из GitHub Actions API. Наблюдатель опрашивает
 `release.json` с cache-busting параметром и завершает замер только после
 совпадения SHA, контрольной строки корневой страницы и `built_at`, который не
 старше начала наблюдения:
@@ -88,10 +94,13 @@ git push origin main
   --run 1 \
   --url https://whoamititle.github.io/mkdocs-deployment-lab/ \
   --expected-commit "$expected_commit" \
-  --started-at-utc "$started_at_utc"
+  --started-at-utc "$started_at_utc" \
+  --measurement-scope push-start-to-healthcheck
 ```
 
-Для Helios используется та же команда с другой площадкой, методом и URL.
+Для Helios используется та же команда с другой площадкой, методом и URL. В
+парной серии с ручным запуском обеим командам передаются одинаковый
+`created_at` и `--measurement-scope workflow-dispatch-to-healthcheck`.
 
 ## Проверка отказоустойчивости
 

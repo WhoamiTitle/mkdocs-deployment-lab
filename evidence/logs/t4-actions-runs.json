@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "collected_at_utc": "2026-10-01T23:47:24.664Z",
+  "commit_sha": "c14c580549c97fdf649cae0fe23341d8560df794",
+  "measurement_scope": "workflow-dispatch-to-healthcheck",
+  "runs": [
+    {
+      "experiment_run": 4,
+      "workflow_run_id": 36942179642,
+      "event": "workflow_dispatch",
+      "created_at": "2026-10-01T23:42:02Z",
+      "updated_at": "2026-10-01T23:42:48Z",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/WhoamiTitle/mkdocs-deployment-lab/actions/runs/36942179642",
+      "jobs": {
+        "build-pages": "success",
+        "deploy-pages": "success",
+        "deploy-helios-production": "success"
+      },
+      "secret_scan": {
+        "private_key_marker_hits": 0,
+        "known_hosts_exact_line_hits": 0
+      },
+      "receipts": {
+        "pages_build": {
+          "release_id": "c14c580549c9-20261001T234226Z",
+          "built_at": "2026-10-01T23:42:26.104558+00:00",
+          "duration_seconds": 1.069356629000005,
+          "artifact_size_bytes": 4582096,
+          "file_count": 131
+        },
+        "helios_build": {
+          "release_id": "c14c580549c9-20261001T234227Z",
+          "built_at": "2026-10-01T23:42:27.207593+00:00",
+          "duration_seconds": 1.0021633900000069,
+          "artifact_size_bytes": 4582308,
+          "file_count": 131
+        },
+        "helios_transfer": {
+          "duration_seconds": 5.318559511999993,
+          "file_count": 163,
+          "transferred_file_count": 131,
+          "total_file_size_bytes": 4582308,
+          "transferred_file_size_bytes": 4582308,
+          "sent_bytes": 1554334,
+          "received_bytes": 2683
+        },
+        "helios_healthcheck": {
+          "status_code": 200,
+          "attempts": 1,
+          "duration_seconds": 1.0977667339999897
+        }
+      }
+    },
+    {
+      "experiment_run": 5,
+      "workflow_run_id": 36942278127,
+      "event": "workflow_dispatch",
+      "created_at": "2026-10-01T23:43:12Z",
+      "updated_at": "2026-10-01T23:43:57Z",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/WhoamiTitle/mkdocs-deployment-lab/actions/runs/36942278127",
+      "jobs": {
+        "build-pages": "success",
+        "deploy-pages": "success",
+        "deploy-helios-production": "success"
+      },
+      "secret_scan": {
+        "private_key_marker_hits": 0,
+        "known_hosts_exact_line_hits": 0
+      },
+      "receipts": {
+        "pages_build": {
+          "release_id": "c14c580549c9-20261001T234336Z",
+          "built_at": "2026-10-01T23:43:36.686862+00:00",
+          "duration_seconds": 0.5297767410000063,
+          "artifact_size_bytes": 4582096,
+          "file_count": 131
+        },
+        "helios_build": {
+          "release_id": "c14c580549c9-20261001T234329Z",
+          "built_at": "2026-10-01T23:43:29.133970+00:00",
+          "duration_seconds": 0.5480826200000024,
+          "artifact_size_bytes": 4582308,
+          "file_count": 131
+        },
+        "helios_transfer": {
+          "duration_seconds": 5.250774429000003,
+          "file_count": 163,
+          "transferred_file_count": 131,
+          "total_file_size_bytes": 4582308,
+          "transferred_file_size_bytes": 4582308,
+          "sent_bytes": 1554362,
+          "received_bytes": 2683
+        },
+        "helios_healthcheck": {
+          "status_code": 200,
+          "attempts": 1,
+          "duration_seconds": 1.0531609169999996
+        }
+      }
+    },
+    {
+      "experiment_run": 6,
+      "workflow_run_id": 36942371128,
+      "event": "workflow_dispatch",
+      "created_at": "2026-10-01T23:44:17Z",
+      "updated_at": "2026-10-01T23:45:05Z",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/WhoamiTitle/mkdocs-deployment-lab/actions/runs/36942371128",
+      "jobs": {
+        "build-pages": "success",
+        "deploy-pages": "success",
+        "deploy-helios-production": "success"
+      },
+      "secret_scan": {
+        "private_key_marker_hits": 0,
+        "known_hosts_exact_line_hits": 0
+      },
+      "receipts": {
+        "pages_build": {
+          "release_id": "c14c580549c9-20261001T234444Z",
+          "built_at": "2026-10-01T23:44:44.223527+00:00",
+          "duration_seconds": 0.9174099919999961,
+          "artifact_size_bytes": 4582096,
+          "file_count": 131
+        },
+        "helios_build": {
+          "release_id": "c14c580549c9-20261001T234444Z",
+          "built_at": "2026-10-01T23:44:44.732022+00:00",
+          "duration_seconds": 0.8698899830000002,
+          "artifact_size_bytes": 4582308,
+          "file_count": 131
+        },
+        "helios_transfer": {
+          "duration_seconds": 5.360193396999996,
+          "file_count": 163,
+          "transferred_file_count": 131,
+          "total_file_size_bytes": 4582308,
+          "transferred_file_size_bytes": 4582308,
+          "sent_bytes": 1554344,
+          "received_bytes": 2683
+        },
+        "helios_healthcheck": {
+          "status_code": 200,
+          "attempts": 1,
+          "duration_seconds": 1.3465510440000088
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+platform,run,workflow_run_id,built_at_utc,duration_seconds,result,commit_sha,release_id,dirty,artifact_size_bytes,file_count,cache_condition,notes
+github-pages,4,36942179642,2026-10-01T23:42:26.104Z,1.069357,success,c14c580549c97fdf649cae0fe23341d8560df794,c14c580549c9-20261001T234226Z,false,4582096,131,github-actions-pip-cache-enabled; strict-clean-build,pages-build.json
+helios,4,36942179642,2026-10-01T23:42:27.207Z,1.002163,success,c14c580549c97fdf649cae0fe23341d8560df794,c14c580549c9-20261001T234227Z,false,4582308,131,github-actions-pip-cache-enabled; strict-clean-build,helios-build.json
+github-pages,5,36942278127,2026-10-01T23:43:36.686Z,0.529777,success,c14c580549c97fdf649cae0fe23341d8560df794,c14c580549c9-20261001T234336Z,false,4582096,131,github-actions-pip-cache-enabled; strict-clean-build,pages-build.json
+helios,5,36942278127,2026-10-01T23:43:29.133Z,0.548083,success,c14c580549c97fdf649cae0fe23341d8560df794,c14c580549c9-20261001T234329Z,false,4582308,131,github-actions-pip-cache-enabled; strict-clean-build,helios-build.json
+github-pages,6,36942371128,2026-10-01T23:44:44.223Z,0.917410,success,c14c580549c97fdf649cae0fe23341d8560df794,c14c580549c9-20261001T234444Z,false,4582096,131,github-actions-pip-cache-enabled; strict-clean-build,pages-build.json
+helios,6,36942371128,2026-10-01T23:44:44.732Z,0.869890,success,c14c580549c97fdf649cae0fe23341d8560df794,c14c580549c9-20261001T234444Z,false,4582308,131,github-actions-pip-cache-enabled; strict-clean-build,helios-build.json

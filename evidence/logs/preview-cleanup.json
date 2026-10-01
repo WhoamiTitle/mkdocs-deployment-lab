@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "branch": "test/helios-preview",
+  "branch_slug": "test-helios-preview-24b99e8f",
+  "location": "public_html/mkdocs-deployment-lab/previews/test-helios-preview-24b99e8f",
+  "manual_cleanup": {
+    "workflow_run_id": 36941924953,
+    "conclusion": "success",
+    "removed_release_count": 4
+  },
+  "delete_event_cleanup": {
+    "workflow_run_id": 36942021021,
+    "conclusion": "success",
+    "removed_release_count": 0
+  },
+  "final_preview_status_code": 404,
+  "production_status_code": 200
+}

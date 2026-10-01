@@ -7,6 +7,7 @@ from scripts.measure_publication import (
     BuildMeasurement,
     PublicationMeasurement,
     _append_csv,
+    _create_parser,
     _normalized_base_url,
     parse_utc_datetime,
 )
@@ -76,3 +77,27 @@ def test_publication_measurement_keeps_release_identity() -> None:
 
     assert row["release_id"] == "aaaaaaaaaaaa-20261002T000000Z"
     assert row["release_built_at_utc"] == "2026-10-02T00:00:00.000Z"
+
+
+def test_observer_accepts_workflow_dispatch_measurement_scope() -> None:
+    arguments = _create_parser().parse_args(
+        (
+            "observe",
+            "--platform",
+            "helios",
+            "--method",
+            "ssh-rsync-atomic",
+            "--run",
+            "4",
+            "--url",
+            "https://example.test/site/",
+            "--expected-commit",
+            "a" * 40,
+            "--started-at-utc",
+            "2026-10-02T00:00:00Z",
+            "--measurement-scope",
+            "workflow-dispatch-to-healthcheck",
+        )
+    )
+
+    assert arguments.measurement_scope == "workflow-dispatch-to-healthcheck"

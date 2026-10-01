@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "executed_at_utc": "2026-10-01T23:35:51.472751+00:00",
+  "workflow_run_id": 36941458695,
+  "workflow_conclusion": "success",
+  "commit_sha": "c14c580549c97fdf649cae0fe23341d8560df794",
+  "branch": "main",
+  "secret_scan": {
+    "private_key_marker_hits": 0,
+    "known_hosts_exact_line_hits": 0
+  },
+  "sandbox": {
+    "deployment_root": ".deployments/mkdocs-deployment-lab-sandbox",
+    "public_path": "public_html/mkdocs-deployment-lab-sandbox",
+    "base_url": "https://se.ifmo.ru/~s507353/mkdocs-deployment-lab-sandbox/",
+    "removed_after_test": true
+  },
+  "scenarios": [
+    {
+      "name": "initial-deploy",
+      "result": "success",
+      "release_id": "c14c580549c9-20261001T233404Z",
+      "rsync_duration_seconds": 4.960762417000012,
+      "rsync_sent_bytes": 1554212,
+      "rsync_received_bytes": 2683,
+      "transferred_file_size_bytes": 4582834
+    },
+    {
+      "name": "second-deploy",
+      "result": "success",
+      "release_id": "c14c580549c9-20261001T233405Z",
+      "rsync_duration_seconds": 4.607988735999982,
+      "rsync_sent_bytes": 1554339,
+      "rsync_received_bytes": 2683,
+      "transferred_file_size_bytes": 4582834
+    },
+    {
+      "name": "manual-rollback",
+      "result": "success",
+      "release_id": "c14c580549c9-20261001T233404Z",
+      "duration_seconds": 2.32681248199998
+    },
+    {
+      "name": "automatic-rollback-after-healthcheck-failure",
+      "result": "success",
+      "release_id": "c14c580549c9-20261001T233404Z",
+      "duration_seconds": 2.514437140000041
+    },
+    {
+      "name": "repeat-identical-release",
+      "result": "safe-failure",
+      "active_release_id": "c14c580549c9-20261001T233404Z",
+      "error_type": "CalledProcessError"
+    },
+    {
+      "name": "interrupted-rsync-before-switch",
+      "result": "active-release-preserved",
+      "active_release_id": "c14c580549c9-20261001T233404Z"
+    },
+    {
+      "name": "invalid-new-release",
+      "result": "active-release-preserved",
+      "active_release_id": "c14c580549c9-20261001T233404Z",
+      "error_type": "CalledProcessError"
+    },
+    {
+      "name": "stale-preview-cleanup",
+      "result": "success",
+      "branch_slug": "test-helios-sandbox-cleanup-4894ed02",
+      "removed_release_count": 1
+    },
+    {
+      "name": "production-site-isolation",
+      "result": "success",
+      "url": "https://se.ifmo.ru/~s507353/mkdocs-deployment-lab/"
+    }
+  ]
+}

@@ -5,6 +5,14 @@ pipeline публикации. Исследовательская часть T4 
 развёртывания. Практическая часть P4 реализует публикацию по SSH/rsync,
 preview-сборки, healthcheck и откат.
 
+## Опубликованные результаты
+
+- репозиторий: <https://github.com/WhoamiTitle/mkdocs-deployment-lab>;
+- GitHub Pages: <https://whoamititle.github.io/mkdocs-deployment-lab/>;
+- Helios ИТМО: <https://se.ifmo.ru/~s507353/mkdocs-deployment-lab/>.
+
+Готовый текст для отправки в учебную систему находится в `SUBMISSION.md`.
+
 ## Локальный запуск
 
 Требуется Python 3.13.

@@ -147,15 +147,54 @@ Actions. Проверка `.github/workflows/publish.yml` показала, чт
 подтвердила 17 страниц, отсутствие битых навигационных ссылок и внешних
 runtime-ресурсов, доступность поискового индекса и локальных ресурсов KaTeX.
 
+## Ошибка 6. Намеренная проверка остановки CI
+
+**Текст ошибки:**
+
+<pre><code>
+python -m codespell_lib README.md config docs scripts src tests
+docs/intentional-ci-failure.md:3: t&#101;h ==&gt; the
+make: *** [Makefile:19: lint] Error 65
+Error: Process completed with exit code 2.
+</code></pre>
+
+**Гипотеза:** опечатка в проверяемом документе должна остановить quality job и
+не позволить загрузить `site-build` artifact.
+
+**Проверка:** на временной ветке `test/intentional-ci-failure` создан commit
+`d0324d3`, содержащий только контролируемую опечатку и запрет preview-deploy для
+этой ветки. Запущены CI run
+[36943920803](https://github.com/WhoamiTitle/mkdocs-deployment-lab/actions/runs/36943920803)
+и Publish run `36943920823`.
+
+**Причина:** `codespell` правильно распознал <code>t&#101;h</code> как ошибочное написание
+`the` и вернул ненулевой код.
+
+**Решение:** после получения очищенного журнала временная ветка удалена. В
+`main` ошибочный файл и специальное условие не переносились.
+
+**Результат:** CI завершился ожидаемым статусом `failure`, шаг загрузки
+артефакта был пропущен, а весь Publish workflow для тестовой ветки получил
+статус `skipped`. Ни preview, ни production не изменились. Автоматическая
+очистка ветки завершилась успешно и удалила ноль preview-релизов.
+
+![Намеренно проваленный CI](../assets/screenshots/actions-ci-intentional-failure.png)
+
 ## Контрольный результат
 
 После исправлений полный pipeline завершился успешно:
 
 ```text
 All checks passed!
-23 files already formatted
-Success: no issues found in 23 source files
-17 passed
+30 files already formatted
+Success: no issues found in 30 source files
+34 passed
 Documentation built
+scanned_html_files: 20
+scanned_css_files: 4
 external_assets: 0
 ```
+
+Успешный Publish run `36943230708` отдельно подтвердил jobs `build-pages`,
+`deploy-pages` и `deploy-helios-production`. Его квитанция и снимок приведены в
+разделе [«Подтверждающие материалы»](../evidence/index.md).

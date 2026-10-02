@@ -77,6 +77,7 @@ nav:
   - Эксперимент:
       - experiment/index.md
       - Результаты: experiment/results.md
+      - Подтверждающие материалы: evidence/index.md
   - T4 — безопасность развёртывания:
       - research/t4/index.md
       - Способы развёртывания: research/t4/deployment-methods.md
@@ -94,5 +95,6 @@ nav:
       - Контракт развёртывания: architecture/deployment-contract.md
       - Структура релизов: architecture/release-layout.md
   - Отладка: debugging/index.md
+  - Итоговый вывод: conclusion.md
 
 copyright: Код — MIT; содержание — CC BY 4.0

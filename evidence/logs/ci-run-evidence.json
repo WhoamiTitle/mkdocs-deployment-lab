@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "collected_at_utc": "2026-10-02T00:08:21.562Z",
+  "repository": "WhoamiTitle/mkdocs-deployment-lab",
+  "successful_publish": {
+    "workflow_run_id": 36943230708,
+    "run_number": 19,
+    "run_attempt": 1,
+    "name": "Publish",
+    "event": "push",
+    "conclusion": "success",
+    "head_branch": "main",
+    "head_sha": "ed1bb10742433f830c993bbcd8ea5af6a4d0cf28",
+    "created_at": "2026-10-01T23:54:05Z",
+    "updated_at": "2026-10-01T23:54:52Z",
+    "html_url": "https://github.com/WhoamiTitle/mkdocs-deployment-lab/actions/runs/36943230708",
+    "jobs": {
+      "build-pages": "success",
+      "deploy-pages": "success",
+      "deploy-helios-production": "success",
+      "deploy-helios-preview": "skipped"
+    }
+  },
+  "intentional_failure": {
+    "workflow_run_id": 36943920803,
+    "run_number": 15,
+    "run_attempt": 1,
+    "name": "CI",
+    "event": "push",
+    "conclusion": "failure",
+    "head_branch": "test/intentional-ci-failure",
+    "head_sha": "d0324d3e6332735b0a93d4fbcf2b1421876f875a",
+    "created_at": "2026-10-02T00:02:08Z",
+    "updated_at": "2026-10-02T00:02:35Z",
+    "html_url": "https://github.com/WhoamiTitle/mkdocs-deployment-lab/actions/runs/36943920803",
+    "failed_job": "quality",
+    "failed_step": "Run quality gates and strict build",
+    "sanitized_log_excerpt": [
+      "python -m codespell_lib README.md config docs scripts src tests",
+      "docs/intentional-ci-failure.md:3: teh ==> the",
+      "make: *** [Makefile:19: lint] Error 65",
+      "Error: Process completed with exit code 2."
+    ]
+  },
+  "safety_boundary": {
+    "publish_workflow_run_id": 36943920823,
+    "publish_conclusion": "skipped",
+    "preview_or_production_deployed": false,
+    "temporary_branch_deleted": true,
+    "cleanup_workflow_run_id": 36944008170,
+    "cleanup_conclusion": "success",
+    "cleanup_removed_release_count": 0
+  }
+}

@@ -11,8 +11,6 @@ preview-сборки, healthcheck и откат.
 - GitHub Pages: <https://whoamititle.github.io/mkdocs-deployment-lab/>;
 - Helios ИТМО: <https://se.ifmo.ru/~s507353/mkdocs-deployment-lab/>.
 
-Готовый текст для отправки в учебную систему находится в `SUBMISSION.md`.
-
 ## Локальный запуск
 
 Требуется Python 3.13.
@@ -63,22 +61,3 @@ Workflow и Makefile служат входными адаптерами. Сце�
 - исходный код: MIT, файл `LICENSE`;
 - текст сайта и авторские иллюстрации: CC BY 4.0, файл `LICENSE-CONTENT.md`;
 - сторонние ресурсы сохраняют собственные лицензии в каталогах `docs/assets/vendor`.
-
-## Текущее состояние
-
-Локально проверены строгая сборка, 34 автоматических теста, production и
-preview-публикация, HTTP healthcheck, rollback, локальная загрузка KaTeX и
-русскоязычный поиск. GitHub Pages опубликован официальным Pages artifact
-workflow; для него собраны три замера времени доставки и browser trace с
-заблокированными внешними origin. SSH-доступ, совместимость Helios с FreeBSD и
-переход nginx по ссылке из `public_html` в `~/.deployments` проверены.
-Отдельный deploy-ключ установлен на Helios и проверен с удалёнными командами и
-`rsync`. Ed25519 host key сервера сопоставлен с ранее доверенной записью и
-ключом сервера, после чего строгое подключение проверено с отдельным
-`known_hosts`. GitHub Variables/Secrets настроены, `HELIOS_ENABLED=true`;
-первый production deploy и отдельный preview workflow завершились успешно.
-Разрушительные проверки rollback, ошибок загрузки и очистки preview выполнены
-в отдельном sandbox; production и портфолио после них остались доступны.
-На одном commit SHA выполнены три парных запуска GitHub Pages и Helios;
-сохранены время сборки, `rsync`, healthcheck и интервал до внешней доступности.
-Числовые результаты не подменяются локальной имитацией.

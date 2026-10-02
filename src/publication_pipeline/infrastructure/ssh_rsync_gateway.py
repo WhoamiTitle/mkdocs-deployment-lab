@@ -11,15 +11,15 @@ from typing import Final, Self
 
 from publication_pipeline.application.errors import RemoteExecutionError
 from publication_pipeline.application.models import (
-    BranchSlug,
     DeploymentReceipt,
     PreviewCleanupReceipt,
     Release,
     RsyncTransferMetrics,
     validate_remote_relative_path,
 )
+from publication_pipeline.application.value_objects.branch_slug import BranchSlug
+from publication_pipeline.application.value_objects.release_id import ReleaseId
 
-_REMOTE_ID: Final = re.compile(r"^[A-Za-z0-9._-]+$")
 _REMOTE_ACCOUNT: Final = re.compile(r"^[A-Za-z0-9._-]+$")
 _SSH_CONNECT_TIMEOUT_SECONDS: Final = 15
 _SSH_COMMAND_TIMEOUT_SECONDS: Final = 60
@@ -71,14 +71,12 @@ class SshRsyncReleaseGateway:
 
     def publish(self, release: Release, source: Path) -> DeploymentReceipt:
         self._validate_local_credentials()
-        _validate_remote_identifier(release.release_id, "release ID")
-        staging_relative = (
-            self._settings.deployment_root / "releases" / (f".staging-{release.release_id}")
-        )
+        release_id = release.release_id.value
+        staging_relative = self._settings.deployment_root / "releases" / (f".staging-{release_id}")
 
         self._run_ssh_command(
             f"set -eu; {self._home_assignment('root', self._settings.deployment_root)} "
-            f'stage="$root/releases/.staging-{release.release_id}"; '
+            f'stage="$root/releases/.staging-{release_id}"; '
             'mkdir -p "$root/releases" "$root/preview-releases" "$root/shared-previews"; '
             'rm -rf -- "$stage"; mkdir -p "$stage"'
         )
@@ -88,8 +86,8 @@ class SshRsyncReleaseGateway:
             f"{self._home_assignment('root', self._settings.deployment_root)} "
             f"{self._home_assignment('public', self._settings.public_path)} "
             f"{_production_link_transaction_guard()} "
-            f'stage="$root/releases/.staging-{release.release_id}"; '
-            f'final="$root/releases/{release.release_id}"; '
+            f'stage="$root/releases/.staging-{release_id}"; '
+            f'final="$root/releases/{release_id}"; '
             'test -f "$stage/index.html"; test -f "$stage/release.json"; '
             'ln -s "$root/shared-previews" "$stage/previews"; '
             'test ! -e "$final"; mv "$stage" "$final"; '
@@ -100,7 +98,7 @@ class SshRsyncReleaseGateway:
             'mkdir -p "$(dirname "$public")"; '
             'ln -sfn "$root/current" "$public.next"; '
             'replace_symlink_atomically "$public.next" "$public"; '
-            f'ln -sfn releases/{shlex.quote(release.release_id)} "$root/current.next"; '
+            f'ln -sfn releases/{shlex.quote(release_id)} "$root/current.next"; '
             'replace_symlink_atomically "$root/current.next" "$root/current"; '
             "transaction_committed=1; trap - EXIT"
         )
@@ -117,14 +115,14 @@ class SshRsyncReleaseGateway:
         branch_slug: BranchSlug,
     ) -> DeploymentReceipt:
         slug = branch_slug.value
+        release_id = release.release_id.value
         self._validate_local_credentials()
-        _validate_remote_identifier(release.release_id, "release ID")
         branch_root = self._settings.deployment_root / "preview-releases" / slug
-        staging_relative = branch_root / f".staging-{release.release_id}"
+        staging_relative = branch_root / f".staging-{release_id}"
 
         self._run_ssh_command(
             f"set -eu; {self._home_assignment('root', self._settings.deployment_root)} "
-            f'stage="$root/preview-releases/{slug}/.staging-{release.release_id}"; '
+            f'stage="$root/preview-releases/{slug}/.staging-{release_id}"; '
             f'mkdir -p "$root/preview-releases/{slug}" "$root/shared-previews"; '
             'rm -rf -- "$stage"; mkdir -p "$stage"'
         )
@@ -132,11 +130,11 @@ class SshRsyncReleaseGateway:
         self._run_ssh_command(
             f"set -eu; {_atomic_symlink_replacer()} "
             f"{self._home_assignment('root', self._settings.deployment_root)} "
-            f'stage="$root/preview-releases/{slug}/.staging-{release.release_id}"; '
-            f'final="$root/preview-releases/{slug}/{release.release_id}"; '
+            f'stage="$root/preview-releases/{slug}/.staging-{release_id}"; '
+            f'final="$root/preview-releases/{slug}/{release_id}"; '
             'test -f "$stage/index.html"; test -f "$stage/release.json"; '
             'test ! -e "$final"; mv "$stage" "$final"; '
-            f"ln -sfn ../preview-releases/{slug}/{release.release_id} "
+            f"ln -sfn ../preview-releases/{slug}/{release_id} "
             f'"$root/shared-previews/.{slug}.next"; '
             f'replace_symlink_atomically "$root/shared-previews/.{slug}.next" '
             f'"$root/shared-previews/{slug}"'
@@ -164,8 +162,13 @@ class SshRsyncReleaseGateway:
             'replace_symlink_atomically "$root/current.next" "$root/current"; '
             'transaction_committed=1; trap - EXIT; printf "%s\\n" "$release_id"'
         )
-        release_id = _last_output_line(output, "rollback release ID")
-        _validate_remote_identifier(release_id, "release ID")
+        release_id_text = _last_output_line(output, "rollback release ID")
+        try:
+            release_id = ReleaseId(release_id_text)
+        except ValueError as error:
+            raise RemoteExecutionError(
+                f"Remote rollback returned an invalid release ID: {release_id_text!r}"
+            ) from error
         return DeploymentReceipt(release_id=release_id, location=str(self._settings.public_path))
 
     def cleanup_preview(self, branch_slug: BranchSlug) -> PreviewCleanupReceipt:
@@ -330,11 +333,6 @@ def _last_output_line(output: str, label: str) -> str:
     if not lines:
         raise RemoteExecutionError(f"Remote command returned no {label}")
     return lines[-1]
-
-
-def _validate_remote_identifier(value: str, label: str) -> None:
-    if not _REMOTE_ID.fullmatch(value):
-        raise ValueError(f"Unsafe {label}: {value!r}")
 
 
 def _atomic_symlink_replacer() -> str:

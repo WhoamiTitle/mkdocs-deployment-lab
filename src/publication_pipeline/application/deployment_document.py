@@ -36,9 +36,11 @@ def rsync_transfer_to_document(transfer: RsyncTransferMetrics) -> RsyncTransferD
 
 def deployment_receipt_to_document(receipt: DeploymentReceipt) -> DeploymentReceiptDocument:
     document = DeploymentReceiptDocument(
-        release_id=receipt.release_id,
+        release_id=receipt.release_id.value,
         location=receipt.location,
-        previous_release_id=receipt.previous_release_id,
+        previous_release_id=(
+            receipt.previous_release_id.value if receipt.previous_release_id is not None else None
+        ),
     )
     if receipt.transfer is not None:
         document["transfer"] = rsync_transfer_to_document(receipt.transfer)

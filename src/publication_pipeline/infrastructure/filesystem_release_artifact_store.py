@@ -29,7 +29,7 @@ class FilesystemReleaseArtifactStore:
                     f"Root HTML document has no closing head tag: {index_path}"
                 )
             marker = html.escape(release.marker, quote=True)
-            commit_sha = html.escape(release.commit_sha, quote=True)
+            commit_sha = html.escape(release.commit_sha.value, quote=True)
             metadata = (
                 f'<meta name="deployment-commit" content="{commit_sha}">\n<!-- {marker} -->\n'
             )

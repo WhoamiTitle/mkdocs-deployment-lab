@@ -2,6 +2,8 @@ from pathlib import Path
 
 from publication_pipeline.application.build_release import BuildRelease, BuildReleaseRequest
 from publication_pipeline.application.models import Release, SourceRevision
+from publication_pipeline.application.value_objects.branch_name import BranchName
+from publication_pipeline.application.value_objects.commit_sha import CommitSha
 
 
 class StubSiteBuilder:
@@ -14,7 +16,11 @@ class StubSiteBuilder:
 
 class StubSourceControl:
     def revision(self) -> SourceRevision:
-        return SourceRevision(commit_sha="a" * 40, branch="main", dirty=False)
+        return SourceRevision(
+            commit_sha=CommitSha("a" * 40),
+            branch=BranchName("main"),
+            dirty=False,
+        )
 
 
 class RecordingArtifactWriter:
@@ -40,4 +46,4 @@ def test_build_release_coordinates_ports_without_filesystem_logic(tmp_path: Path
     assert site_builder.destination == tmp_path
     assert artifact_writer.destination == tmp_path
     assert artifact_writer.release == release
-    assert release.commit_sha == "a" * 40
+    assert release.commit_sha == CommitSha("a" * 40)

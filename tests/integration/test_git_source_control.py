@@ -33,8 +33,8 @@ def test_git_source_control_reads_revision_branch_and_dirty_state(tmp_path: Path
     (tmp_path / "tracked.txt").write_text("changed\n", encoding="utf-8")
     dirty_revision = GitSourceControl(tmp_path).revision()
 
-    assert len(clean_revision.commit_sha) == 40
-    assert clean_revision.branch == "main"
+    assert len(clean_revision.commit_sha.value) == 40
+    assert clean_revision.branch.value == "main"
     assert clean_revision.dirty is False
     assert dirty_revision.commit_sha == clean_revision.commit_sha
     assert dirty_revision.dirty is True

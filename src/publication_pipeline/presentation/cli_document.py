@@ -56,10 +56,10 @@ def build_release_to_document(
     file_count: int,
 ) -> BuildReleaseDocument:
     return BuildReleaseDocument(
-        release_id=release.release_id,
-        commit_sha=release.commit_sha,
-        branch=release.branch,
-        built_at=release.built_at.isoformat(),
+        release_id=release.release_id.value,
+        commit_sha=release.commit_sha.value,
+        branch=release.branch.value,
+        built_at=release.built_at.value.isoformat(),
         dirty=release.dirty,
         duration_seconds=duration_seconds,
         artifact_size_bytes=artifact_size_bytes,

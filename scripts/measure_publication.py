@@ -268,7 +268,7 @@ def _measure_local(arguments: ParsedMeasurementArguments) -> int:
                     finished_at_utc=build_finished,
                     duration_seconds=build_duration,
                     result="success",
-                    commit_sha=release.commit_sha,
+                    commit_sha=release.commit_sha.value,
                     dirty=release.dirty,
                     artifact_size_bytes=artifact_size,
                     file_count=file_count,
@@ -321,9 +321,9 @@ def _measure_local(arguments: ParsedMeasurementArguments) -> int:
                     healthcheck_at_utc=healthcheck_at,
                     duration_seconds=publication_duration,
                     result="success",
-                    commit_sha=release.commit_sha,
-                    release_id=release.release_id,
-                    release_built_at_utc=release.built_at,
+                    commit_sha=release.commit_sha.value,
+                    release_id=release.release_id.value,
+                    release_built_at_utc=release.built_at.value,
                     url=base_url,
                     measurement_scope="deploy-command-to-healthcheck",
                     artifact_size_bytes=artifact_size,
@@ -337,7 +337,7 @@ def _measure_local(arguments: ParsedMeasurementArguments) -> int:
                             "run": run,
                             "build_seconds": round(build_duration, 6),
                             "publication_seconds": round(publication_duration, 6),
-                            "commit_sha": release.commit_sha,
+                            "commit_sha": release.commit_sha.value,
                             "dirty": release.dirty,
                         },
                         ensure_ascii=False,
@@ -376,10 +376,12 @@ def _observe_publication(arguments: ParsedMeasurementArguments) -> int:
     for attempt in range(1, attempts + 1):
         try:
             release = _fetch_release(base_url)
-            if release.commit_sha != expected_commit:
-                last_problem = f"published commit is still {release.commit_sha}"
-            elif release.built_at < started_at:
-                last_problem = f"published release {release.release_id} predates observation start"
+            if release.commit_sha.value != expected_commit:
+                last_problem = f"published commit is still {release.commit_sha.value}"
+            elif release.built_at.value < started_at:
+                last_problem = (
+                    f"published release {release.release_id.value} predates observation start"
+                )
             else:
                 _verify_root_page(base_url, expected_commit)
                 healthcheck_at = datetime.now(UTC)
@@ -392,8 +394,8 @@ def _observe_publication(arguments: ParsedMeasurementArguments) -> int:
                     duration_seconds=(healthcheck_at - started_at).total_seconds(),
                     result="success",
                     commit_sha=expected_commit,
-                    release_id=release.release_id,
-                    release_built_at_utc=release.built_at,
+                    release_id=release.release_id.value,
+                    release_built_at_utc=release.built_at.value,
                     url=base_url,
                     measurement_scope=arguments.measurement_scope,
                     artifact_size_bytes=None,

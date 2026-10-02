@@ -4,12 +4,16 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from publication_pipeline.application.errors import RemoteExecutionError
 from publication_pipeline.application.models import (
-    BranchSlug,
     Release,
     RsyncTransferMetrics,
     SourceRevision,
 )
+from publication_pipeline.application.value_objects.branch_name import BranchName
+from publication_pipeline.application.value_objects.branch_slug import BranchSlug
+from publication_pipeline.application.value_objects.commit_sha import CommitSha
+from publication_pipeline.application.value_objects.utc_datetime import UtcDatetime
 from publication_pipeline.infrastructure.ssh_rsync_gateway import (
     SshRsyncReleaseGateway,
     SshRsyncSettings,
@@ -111,8 +115,12 @@ def test_all_link_switches_use_platform_aware_atomic_replacer(tmp_path: Path) ->
     )
     gateway = _RecordingSshGateway(settings)
     release = Release.create(
-        SourceRevision(commit_sha="a" * 40, branch="main", dirty=False),
-        built_at=datetime(2026, 1, 1, tzinfo=UTC),
+        SourceRevision(
+            commit_sha=CommitSha("a" * 40),
+            branch=BranchName("main"),
+            dirty=False,
+        ),
+        built_at=UtcDatetime(datetime(2026, 1, 1, tzinfo=UTC)),
     )
 
     gateway.publish(release, tmp_path / "production")
@@ -208,3 +216,25 @@ def test_cleanup_preview_removes_only_validated_branch_paths(tmp_path: Path) -> 
     assert receipt.removed_release_count == 2
     assert "shared-previews/feature-report-abcd1234" in gateway.commands[-1]
     assert "preview-releases/feature-report-abcd1234" in gateway.commands[-1]
+
+
+def test_rollback_rejects_unsafe_remote_release_id(tmp_path: Path) -> None:
+    settings = SshRsyncSettings.create(
+        host="helios.example.edu",
+        user="student",
+        port=2222,
+        private_key=tmp_path / "key",
+        known_hosts=tmp_path / "known_hosts",
+        deployment_root=".deployments/mkdocs-deployment-lab",
+        public_path="public_html/mkdocs-deployment-lab",
+    )
+    gateway = _RecordingSshGateway(settings)
+    gateway.capture_output = "../../escaped-release\n"
+
+    with pytest.raises(
+        RemoteExecutionError,
+        match="Remote rollback returned an invalid release ID",
+    ) as captured:
+        gateway.rollback()
+
+    assert isinstance(captured.value.__cause__, ValueError)

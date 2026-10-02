@@ -18,10 +18,12 @@ from urllib.request import Request, urlopen
 
 from publication_pipeline.application.errors import HealthcheckError, PublicationError
 from publication_pipeline.application.models import (
-    BranchSlug,
     DeploymentReceipt,
     Release,
 )
+from publication_pipeline.application.value_objects.branch_name import BranchName
+from publication_pipeline.application.value_objects.branch_slug import BranchSlug
+from publication_pipeline.application.value_objects.release_id import ReleaseId
 from publication_pipeline.application.verify_release import VerifyRelease, VerifyReleaseRequest
 from publication_pipeline.infrastructure.filesystem_release_artifact_store import (
     FilesystemReleaseArtifactStore,
@@ -102,7 +104,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             {
                 "name": "manual-rollback",
                 "result": "success",
-                "release_id": rollback_receipt.release_id,
+                "release_id": rollback_receipt.release_id.value,
                 "duration_seconds": rollback_duration,
             }
         )
@@ -132,7 +134,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             {
                 "name": "automatic-rollback-after-healthcheck-failure",
                 "result": "success",
-                "release_id": automatic_receipt.release_id,
+                "release_id": automatic_receipt.release_id.value,
                 "duration_seconds": automatic_rollback_duration,
             }
         )
@@ -141,17 +143,17 @@ def main(arguments: Sequence[str] | None = None) -> int:
             lambda: gateway.publish(first_release, first_site)
         )
         _assert_active_release(settings, first_release.release_id)
-        _remove_staging_directory(settings, f".staging-{first_release.release_id}")
+        _remove_staging_directory(settings, f".staging-{first_release.release_id.value}")
         scenarios.append(
             {
                 "name": "repeat-identical-release",
                 "result": "safe-failure",
-                "active_release_id": first_release.release_id,
+                "active_release_id": first_release.release_id.value,
                 "error_type": repeat_error,
             }
         )
 
-        interrupted_stage = f".staging-interrupted-{third_release.release_id}"
+        interrupted_stage = f".staging-interrupted-{third_release.release_id.value}"
         _upload_partial_staging(settings, third_site / "release.json", interrupted_stage)
         _assert_active_release(settings, first_release.release_id)
         _remove_staging_directory(settings, interrupted_stage)
@@ -159,7 +161,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             {
                 "name": "interrupted-rsync-before-switch",
                 "result": "active-release-preserved",
-                "active_release_id": first_release.release_id,
+                "active_release_id": first_release.release_id.value,
             }
         )
 
@@ -169,18 +171,18 @@ def main(arguments: Sequence[str] | None = None) -> int:
         )
         _assert_active_release(settings, first_release.release_id)
         _verify_release(base_url, first_release)
-        _remove_staging_directory(settings, f".staging-{invalid_release.release_id}")
+        _remove_staging_directory(settings, f".staging-{invalid_release.release_id.value}")
         scenarios.append(
             {
                 "name": "invalid-new-release",
                 "result": "active-release-preserved",
-                "active_release_id": first_release.release_id,
+                "active_release_id": first_release.release_id.value,
                 "error_type": invalid_error,
             }
         )
 
         preview_branch = "test/helios-sandbox-cleanup"
-        preview_slug = BranchSlug.from_branch(preview_branch)
+        preview_slug = BranchSlug.from_branch(BranchName(preview_branch))
         gateway.publish_preview(third_release, third_site, preview_slug)
         preview_url = urljoin(base_url, f"previews/{preview_slug.value}/")
         _verify_release(preview_url, third_release)
@@ -221,8 +223,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
     evidence = {
         "schema_version": 1,
         "executed_at_utc": datetime.now(UTC).isoformat(),
-        "commit_sha": revision.commit_sha,
-        "branch": revision.branch,
+        "commit_sha": revision.commit_sha.value,
+        "branch": revision.branch.value,
         "sandbox": {
             "deployment_root": settings.deployment_root.as_posix(),
             "public_path": settings.public_path.as_posix(),
@@ -310,7 +312,7 @@ def _build_site(repository_root: Path, destination: Path, base_url: str) -> Path
 
 
 def _wait_for_distinct_release_id(release: Release) -> None:
-    while datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") == release.built_at.strftime(
+    while datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") == release.built_at.value.strftime(
         "%Y%m%dT%H%M%SZ"
     ):
         time.sleep(0.05)
@@ -333,7 +335,7 @@ def _successful_deploy(name: str, receipt: DeploymentReceipt) -> dict[str, Scena
     return {
         "name": name,
         "result": "success",
-        "release_id": receipt.release_id,
+        "release_id": receipt.release_id.value,
         "rsync_duration_seconds": receipt.transfer.duration_seconds,
         "rsync_sent_bytes": receipt.transfer.sent_bytes,
         "rsync_received_bytes": receipt.transfer.received_bytes,
@@ -359,14 +361,16 @@ def _assert_sandbox_absent(settings: SshRsyncSettings) -> None:
     )
 
 
-def _assert_active_release(settings: SshRsyncSettings, expected_release_id: str) -> None:
+def _assert_active_release(settings: SshRsyncSettings, expected_release_id: ReleaseId) -> None:
     root = settings.deployment_root.as_posix()
     active = _capture_ssh_output(
         settings,
         f'root="$HOME/{root}"; basename "$(readlink "$root/current")"',
     ).strip()
-    if active != expected_release_id:
-        raise AssertionError(f"Active release is {active!r}, expected {expected_release_id!r}")
+    if active != expected_release_id.value:
+        raise AssertionError(
+            f"Active release is {active!r}, expected {expected_release_id.value!r}"
+        )
 
 
 def _upload_partial_staging(

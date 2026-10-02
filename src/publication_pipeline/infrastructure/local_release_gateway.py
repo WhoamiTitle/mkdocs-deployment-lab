@@ -12,11 +12,12 @@ from publication_pipeline.application.errors import (
     UnsafePathError,
 )
 from publication_pipeline.application.models import (
-    BranchSlug,
     DeploymentReceipt,
     PreviewCleanupReceipt,
     Release,
 )
+from publication_pipeline.application.value_objects.branch_slug import BranchSlug
+from publication_pipeline.application.value_objects.release_id import ReleaseId
 
 
 class LocalReleaseGateway:
@@ -40,12 +41,13 @@ class LocalReleaseGateway:
             return self._publish(release, source)
         except OSError as error:
             raise LocalDeploymentError(
-                f"Cannot publish local release {release.release_id}"
+                f"Cannot publish local release {release.release_id.value}"
             ) from error
 
     def _publish(self, release: Release, source: Path) -> DeploymentReceipt:
         self._prepare_layout()
-        release_path = self._resolve_deployment_path("releases", release.release_id)
+        release_id = release.release_id.value
+        release_path = self._resolve_deployment_path("releases", release_id)
         self._stage_artifact(source, release_path, include_previews=True)
 
         current_link = self._deployment_root / "current"
@@ -53,7 +55,7 @@ class LocalReleaseGateway:
         old_target = _read_link(current_link)
         old_previous_target = _read_link(previous_link)
         old_public_target = _read_link(self._public_path)
-        new_target = Path("releases") / release.release_id
+        new_target = Path("releases") / release_id
         try:
             if old_target is not None:
                 _atomic_symlink(previous_link, old_target)
@@ -93,16 +95,17 @@ class LocalReleaseGateway:
         branch_slug: BranchSlug,
     ) -> DeploymentReceipt:
         slug = branch_slug.value
+        release_id = release.release_id.value
         self._prepare_layout()
         release_path = self._resolve_deployment_path(
             "preview-releases",
             slug,
-            release.release_id,
+            release_id,
         )
         self._stage_artifact(source, release_path, include_previews=False)
 
         public_preview_link = self._resolve_deployment_path("shared-previews", slug)
-        preview_target = Path("..") / "preview-releases" / slug / release.release_id
+        preview_target = Path("..") / "preview-releases" / slug / release_id
         old_target = _read_link(public_preview_link)
         _atomic_symlink(public_preview_link, preview_target)
         return DeploymentReceipt(
@@ -249,8 +252,8 @@ def _restore_links(
             original_error.add_note(f"Could not restore symlink {link_path}: {restore_error}")
 
 
-def _target_release_id(target: Path | None) -> str | None:
-    return target.name if target is not None else None
+def _target_release_id(target: Path | None) -> ReleaseId | None:
+    return ReleaseId(target.name) if target is not None else None
 
 
 def _validate_local_target(path: Path, label: str) -> None:

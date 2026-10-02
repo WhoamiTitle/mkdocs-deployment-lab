@@ -1,11 +1,12 @@
 from publication_pipeline.application.deployment_document import deployment_receipt_to_document
 from publication_pipeline.application.models import DeploymentReceipt, RsyncTransferMetrics
+from publication_pipeline.application.value_objects.release_id import ReleaseId
 
 
 def test_deployment_document_omits_absent_transfer() -> None:
     document = deployment_receipt_to_document(
         DeploymentReceipt(
-            release_id="abcdef123456-20261002T010203Z",
+            release_id=ReleaseId("abcdef123456-20261002T010203Z"),
             location="public_html/site",
         )
     )
@@ -30,9 +31,9 @@ def test_deployment_document_contains_typed_transfer_metrics() -> None:
 
     document = deployment_receipt_to_document(
         DeploymentReceipt(
-            release_id="abcdef123456-20261002T010203Z",
+            release_id=ReleaseId("abcdef123456-20261002T010203Z"),
             location="public_html/site",
-            previous_release_id="previous-release",
+            previous_release_id=ReleaseId("previous-release"),
             transfer=transfer,
         )
     )

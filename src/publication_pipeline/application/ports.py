@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import Protocol
 
 from publication_pipeline.application.models import (
-    BranchSlug,
     DeploymentReceipt,
     HttpResponse,
     PreviewCleanupReceipt,
     Release,
     SourceRevision,
 )
+from publication_pipeline.application.value_objects.branch_slug import BranchSlug
 
 
 class SourceControl(Protocol):

@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from publication_pipeline.application.artifact_validation import validate_deployment_artifact
-from publication_pipeline.application.models import BranchSlug, DeploymentReceipt, Release
+from publication_pipeline.application.models import DeploymentReceipt, Release
 from publication_pipeline.application.ports import PreviewPublisher
+from publication_pipeline.application.value_objects.branch_name import BranchName
+from publication_pipeline.application.value_objects.branch_slug import BranchSlug
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -21,5 +23,5 @@ class PublishPreview:
 
     def execute(self, request: PublishPreviewRequest) -> DeploymentReceipt:
         validate_deployment_artifact(request.source)
-        branch_slug = BranchSlug.from_branch(request.branch)
+        branch_slug = BranchSlug.from_branch(BranchName(request.branch))
         return self._publisher.publish_preview(request.release, request.source, branch_slug)

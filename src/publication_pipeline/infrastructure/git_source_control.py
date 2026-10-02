@@ -5,6 +5,8 @@ from pathlib import Path
 
 from publication_pipeline.application.errors import SourceControlError
 from publication_pipeline.application.models import SourceRevision
+from publication_pipeline.application.value_objects.branch_name import BranchName
+from publication_pipeline.application.value_objects.commit_sha import CommitSha
 
 _GIT_TIMEOUT_SECONDS = 15
 
@@ -17,7 +19,14 @@ class GitSourceControl:
         commit_sha = self._read_git_output("rev-parse", "--verify", "HEAD")
         branch = self._read_git_output("branch", "--show-current") or "detached"
         dirty = bool(self._read_git_output("status", "--porcelain"))
-        return SourceRevision(commit_sha=commit_sha, branch=branch, dirty=dirty)
+        try:
+            return SourceRevision(
+                commit_sha=CommitSha(commit_sha),
+                branch=BranchName(branch),
+                dirty=dirty,
+            )
+        except ValueError as error:
+            raise SourceControlError("Git returned invalid revision metadata") from error
 
     def _read_git_output(self, *arguments: str) -> str:
         try:

@@ -9,7 +9,11 @@ from publication_pipeline.application.errors import (
     PublicationError,
     UnsafePathError,
 )
-from publication_pipeline.application.models import BranchSlug, Release, SourceRevision
+from publication_pipeline.application.models import Release, SourceRevision
+from publication_pipeline.application.value_objects.branch_name import BranchName
+from publication_pipeline.application.value_objects.branch_slug import BranchSlug
+from publication_pipeline.application.value_objects.commit_sha import CommitSha
+from publication_pipeline.application.value_objects.utc_datetime import UtcDatetime
 from publication_pipeline.infrastructure import local_release_gateway as local_gateway_module
 from publication_pipeline.infrastructure.local_release_gateway import LocalReleaseGateway
 
@@ -23,8 +27,12 @@ def _artifact(path: Path, release: Release, text: str) -> Path:
 
 def _release(commit: str, second: int) -> Release:
     return Release.create(
-        SourceRevision(commit_sha=commit, branch="main", dirty=False),
-        built_at=datetime(2026, 1, 1, 0, 0, second, tzinfo=UTC),
+        SourceRevision(
+            commit_sha=CommitSha(commit),
+            branch=BranchName("main"),
+            dirty=False,
+        ),
+        built_at=UtcDatetime(datetime(2026, 1, 1, 0, 0, second, tzinfo=UTC)),
     )
 
 
@@ -43,7 +51,7 @@ def test_publish_then_rollback_swaps_immutable_releases(tmp_path: Path) -> None:
 
     assert receipt.release_id == first.release_id
     assert (tmp_path / "public" / "index.html").read_text(encoding="utf-8") == "first"
-    assert (tmp_path / "state" / "releases" / second.release_id).is_dir()
+    assert (tmp_path / "state" / "releases" / second.release_id.value).is_dir()
     assert (tmp_path / "public").readlink() == tmp_path / "state" / "current"
 
 
@@ -75,7 +83,7 @@ def test_failed_link_preparation_keeps_active_release(
     assert isinstance(captured.value.__cause__, OSError)
 
     assert (public_path / "index.html").read_text(encoding="utf-8") == "first"
-    assert (deployment_root / "current").readlink().name == first.release_id
+    assert (deployment_root / "current").readlink().name == first.release_id.value
     assert not (deployment_root / "previous").exists()
 
 
@@ -91,7 +99,7 @@ def test_release_directory_must_resolve_inside_deployment_root(tmp_path: Path) -
     with pytest.raises(UnsafePathError, match="escapes the deployment root"):
         gateway.publish(release, _artifact(tmp_path / "artifact", release, "release"))
 
-    assert not (outside_root / release.release_id).exists()
+    assert not (outside_root / release.release_id.value).exists()
 
 
 def test_preview_is_published_under_shared_preview_path(tmp_path: Path) -> None:
@@ -118,7 +126,7 @@ def test_preview_cleanup_requires_confirmation_and_removes_branch(tmp_path: Path
     preview_artifact = _artifact(tmp_path / "preview", preview, "preview")
     gateway.publish(production, production_artifact)
     branch = "feature/report"
-    branch_slug = BranchSlug.from_branch(branch)
+    branch_slug = BranchSlug.from_branch(BranchName(branch))
     gateway.publish_preview(preview, preview_artifact, branch_slug)
 
     with pytest.raises(PublicationError, match="exact branch confirmation"):

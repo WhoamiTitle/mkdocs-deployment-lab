@@ -12,12 +12,14 @@ from publication_pipeline.application.cleanup_preview import (
 from publication_pipeline.application.deploy_release import DeployRelease, DeployReleaseRequest
 from publication_pipeline.application.deployment_document import deployment_receipt_to_document
 from publication_pipeline.application.errors import InvalidArtifactError, PublicationError
-from publication_pipeline.application.models import BranchSlug, DeploymentReceipt
+from publication_pipeline.application.models import DeploymentReceipt
 from publication_pipeline.application.publish_preview import (
     PublishPreview,
     PublishPreviewRequest,
 )
 from publication_pipeline.application.rollback_release import RollbackRelease
+from publication_pipeline.application.value_objects.branch_name import BranchName
+from publication_pipeline.application.value_objects.branch_slug import BranchSlug
 from publication_pipeline.application.verify_offline_assets import (
     VerifyOfflineAssets,
     VerifyOfflineAssetsRequest,
@@ -59,7 +61,7 @@ def _dispatch_command(arguments: ParsedCliArguments) -> int:
     if arguments.command == "build":
         return _build_release(arguments)
     if arguments.command == "branch-slug":
-        print(BranchSlug.from_branch(arguments.branch).value)
+        print(BranchSlug.from_branch(BranchName(arguments.branch)).value)
         return 0
     if arguments.command == "healthcheck":
         return _verify_published_release(arguments)

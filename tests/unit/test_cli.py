@@ -5,6 +5,10 @@ from pathlib import Path
 import pytest
 
 from publication_pipeline.application.models import Release
+from publication_pipeline.application.value_objects.branch_name import BranchName
+from publication_pipeline.application.value_objects.commit_sha import CommitSha
+from publication_pipeline.application.value_objects.release_id import ReleaseId
+from publication_pipeline.application.value_objects.utc_datetime import UtcDatetime
 from publication_pipeline.infrastructure.filesystem_release_artifact_store import (
     FilesystemReleaseArtifactStore,
 )
@@ -74,10 +78,10 @@ def test_cli_dispatches_local_deployment(
         encoding="utf-8",
     )
     release = Release(
-        release_id="abcdef123456-20261002T010203Z",
-        commit_sha="abcdef1234567890",
-        branch="main",
-        built_at=datetime(2026, 10, 2, 1, 2, 3, tzinfo=UTC),
+        release_id=ReleaseId("abcdef123456-20261002T010203Z"),
+        commit_sha=CommitSha("a" * 40),
+        branch=BranchName("main"),
+        built_at=UtcDatetime(datetime(2026, 10, 2, 1, 2, 3, tzinfo=UTC)),
         dirty=False,
     )
     FilesystemReleaseArtifactStore().write(site_directory, release)
@@ -98,5 +102,5 @@ def test_cli_dispatches_local_deployment(
 
     assert exit_code == 0
     document = json.loads(capsys.readouterr().out)
-    assert document["release_id"] == release.release_id
+    assert document["release_id"] == release.release_id.value
     assert (public_path / "index.html").is_file()

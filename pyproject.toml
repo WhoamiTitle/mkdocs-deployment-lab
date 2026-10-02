@@ -1,7 +1,3 @@
-[build-system]
-requires = ["setuptools==80.9.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "publication-pipeline"
 version = "0.1.0"
@@ -12,16 +8,101 @@ license = "MIT"
 authors = [
   { name = "Vasiliy" },
 ]
-dependencies = []
+dependencies = [
+  "mkdocs==1.6.1",
+  "mkdocs-material==9.7.7",
+  "pymdown-extensions==12.1",
+]
 
 [project.scripts]
-publication-pipeline = "publication_pipeline.__main__:main"
+publication-pipeline = "publication_pipeline.main:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[dependency-groups]
+dev = [
+  "codespell==2.4.3",
+  "coverage==7.14.0",
+  "deptry==0.25.1",
+  "import-linter==2.15",
+  "mypy==2.3.1",
+  "pip-audit==2.10.1",
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
+  "ruff==0.16.9",
+  "slotscheck==0.20.0",
+  "tombi==1.7.0",
+  "uv==0.12.22",
+]
+
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.codespell]
+skip = ".git,.venv,site,.local-deploy,docs/assets/vendor"
+ignore-words-list = "crate,fo"
+
+[tool.coverage.run]
+branch = true
+source = ["publication_pipeline"]
+omit = [
+  "src/publication_pipeline/__main__.py",
+  "src/publication_pipeline/**/__init__.py",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true
+
+[tool.deptry]
+root = ["src"]
+ignore = [
+  "DEP002",  # Build-time integrations are referenced by MkDocs configuration.
+  "DEP003",  # Transitive imports are checked by the universal lockfile.
+]
+
+[tool.importlinter]
+root_package = "publication_pipeline"
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+id = "application-independence"
+name = "application must not import outer adapters"
+type = "forbidden"
+source_modules = ["publication_pipeline.application"]
+forbidden_modules = [
+  "publication_pipeline.infrastructure",
+  "publication_pipeline.main",
+  "publication_pipeline.presentation",
+]
+
+[[tool.importlinter.contracts]]
+id = "presentation-independence"
+name = "presentation must not import infrastructure or composition root"
+type = "forbidden"
+source_modules = ["publication_pipeline.presentation"]
+forbidden_modules = [
+  "publication_pipeline.infrastructure",
+  "publication_pipeline.main",
+]
+
+[[tool.importlinter.contracts]]
+id = "infrastructure-independence"
+name = "infrastructure must not import presentation or composition root"
+type = "forbidden"
+source_modules = ["publication_pipeline.infrastructure"]
+forbidden_modules = [
+  "publication_pipeline.main",
+  "publication_pipeline.presentation",
+]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests", "scripts"]
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -34,11 +115,11 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 [tool.ruff.format]
 quote-style = "double"
 
-[tool.mypy]
-python_version = "3.13"
-strict = true
-files = ["src", "tests", "scripts"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
-[tool.codespell]
-skip = ".git,.venv,site,.local-deploy,docs/assets/vendor"
-ignore-words-list = "crate,fo"
+[tool.slotscheck]
+strict-imports = true
+
+[tool.uv]
+default-groups = ["dev"]

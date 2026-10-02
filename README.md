@@ -13,7 +13,8 @@ preview-сборки, healthcheck и откат.
 
 ## Локальный запуск
 
-Требуется Python 3.13.
+Требуются Python 3.13 и `uv` 0.12.22. `uv` проверяет актуальность
+`uv.lock` и создаёт проектное окружение `.venv`.
 
 ```bash
 make setup
@@ -51,7 +52,8 @@ Actions Secrets перед первой публикацией.
 
 ## Архитектура
 
-Workflow и Makefile служат входными адаптерами. Сценарии сборки, публикации,
+CLI в `src/publication_pipeline/presentation` служит входным адаптером, а
+`src/publication_pipeline/main.py` — composition root. Сценарии сборки, публикации,
 проверки и отката находятся в `src/publication_pipeline/application`.
 Взаимодействие с MkDocs, Git, HTTP, локальной файловой системой и SSH/rsync
 реализовано в инфраструктурных шлюзах.

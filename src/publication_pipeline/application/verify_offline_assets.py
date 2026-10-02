@@ -1,7 +1,5 @@
 """Validate that a built site has no externally hosted runtime assets."""
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -13,38 +11,61 @@ _EXTERNAL_PREFIXES = ("http://", "https://", "//")
 _CSS_URL = re.compile(r"url\(\s*(['\"]?)(?P<url>[^)'\"]+)\1\s*\)", re.IGNORECASE)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ExternalAsset:
     source_file: Path
     element: str
     url: str
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class OfflineAssetReport:
     scanned_html_files: int
     scanned_css_files: int
     external_assets: tuple[ExternalAsset, ...]
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class VerifyOfflineAssetsRequest:
+    site_directory: Path
+
+
 class VerifyOfflineAssets:
-    def execute(self, site_directory: Path) -> OfflineAssetReport:
-        if not site_directory.is_dir():
+    def execute(self, request: VerifyOfflineAssetsRequest) -> OfflineAssetReport:
+        site_directory = request.site_directory
+        try:
+            directory_exists = site_directory.is_dir()
+        except OSError as error:
+            raise InvalidArtifactError(
+                f"Cannot inspect site directory: {site_directory}"
+            ) from error
+        if not directory_exists:
             raise InvalidArtifactError(f"Site directory does not exist: {site_directory}")
 
         external_assets: list[ExternalAsset] = []
-        html_files = sorted(site_directory.rglob("*.html"))
-        css_files = sorted(site_directory.rglob("*.css"))
+        try:
+            html_files = sorted(site_directory.rglob("*.html"))
+            css_files = sorted(site_directory.rglob("*.css"))
+        except OSError as error:
+            raise InvalidArtifactError(f"Cannot scan generated site: {site_directory}") from error
         for html_file in html_files:
             parser = _RuntimeAssetParser(html_file)
-            parser.feed(html_file.read_text(encoding="utf-8"))
+            try:
+                parser.feed(html_file.read_text(encoding="utf-8"))
+            except OSError as error:
+                raise InvalidArtifactError(f"Cannot read generated HTML: {html_file}") from error
             external_assets.extend(parser.external_assets)
         for css_file in css_files:
-            css = css_file.read_text(encoding="utf-8", errors="replace")
+            try:
+                css = css_file.read_text(encoding="utf-8", errors="replace")
+            except OSError as error:
+                raise InvalidArtifactError(f"Cannot read generated CSS: {css_file}") from error
             for match in _CSS_URL.finditer(css):
                 url = match.group("url").strip()
                 if _is_external(url):
-                    external_assets.append(ExternalAsset(css_file, "css:url", url))
+                    external_assets.append(
+                        ExternalAsset(source_file=css_file, element="css:url", url=url)
+                    )
 
         report = OfflineAssetReport(
             scanned_html_files=len(html_files),
@@ -72,7 +93,9 @@ class _RuntimeAssetParser(HTMLParser):
         if tag == "script" and "src" in values:
             candidate_urls.append(("script:src", values["src"]))
         elif tag == "link" and "href" in values:
-            relations = set(values.get("rel", "").lower().split())
+            relations: set[str] = set()
+            if "rel" in values:
+                relations.update(values["rel"].lower().split())
             if relations.intersection(
                 {"stylesheet", "icon", "preload", "modulepreload", "manifest"}
             ):
@@ -82,7 +105,9 @@ class _RuntimeAssetParser(HTMLParser):
 
         for element, url in candidate_urls:
             if _is_external(url):
-                self.external_assets.append(ExternalAsset(self._source_file, element, url))
+                self.external_assets.append(
+                    ExternalAsset(source_file=self._source_file, element=element, url=url)
+                )
 
 
 def _is_external(url: str) -> bool:

@@ -1,28 +1,45 @@
 PYTHON ?= .venv/bin/python
+UV ?= uv
+BIN_DIR ?= .venv/bin
 SITE_DIR ?= site
-LOCAL_STATE_ROOT ?= .local-deploy/state
+LOCAL_DEPLOYMENT_ROOT ?= .local-deploy/state
 LOCAL_PUBLIC_PATH ?= .local-deploy/public-site
 HELIOS_SANDBOX_BASE_URL ?= https://se.ifmo.ru/~s507353/mkdocs-deployment-lab-sandbox/
 HELIOS_PRODUCTION_URL ?= https://se.ifmo.ru/~s507353/mkdocs-deployment-lab/
 
-.PHONY: setup lint typecheck test build offline-check check serve deploy-local preview-local rollback-local benchmark-local test-helios-sandbox
+.PHONY: setup lint architecture dependencies slots typecheck test audit build offline-check check serve deploy-local preview-local rollback-local benchmark-local test-helios-sandbox
 
 setup:
-	python3 -m venv .venv
-	.venv/bin/python -m pip install pip==26.2.1
-	.venv/bin/python -m pip install --requirement requirements.txt
-	.venv/bin/python -m pip install --no-deps --editable .
+	$(UV) sync --locked
 
 lint:
 	$(PYTHON) -m ruff check scripts src tests
 	$(PYTHON) -m ruff format --check scripts src tests
+	$(BIN_DIR)/tombi format --check pyproject.toml
+	$(BIN_DIR)/tombi lint pyproject.toml
 	$(PYTHON) -m codespell_lib README.md config docs scripts src tests
+
+architecture:
+	$(BIN_DIR)/lint-imports
+
+dependencies:
+	$(BIN_DIR)/uv lock --check
+	$(BIN_DIR)/deptry .
+
+slots:
+	$(PYTHON) -m slotscheck src/publication_pipeline
 
 typecheck:
 	$(PYTHON) -m mypy
 
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest \
+		--cov=publication_pipeline \
+		--cov-report=term-missing \
+		--cov-fail-under=80
+
+audit:
+	bash scripts/pip_audit.sh
 
 build:
 	$(PYTHON) -m publication_pipeline build --site-dir $(SITE_DIR)
@@ -30,7 +47,7 @@ build:
 offline-check:
 	$(PYTHON) -m publication_pipeline offline-check --site-dir $(SITE_DIR)
 
-check: lint typecheck test build offline-check
+check: lint architecture dependencies slots typecheck test build offline-check
 
 serve:
 	$(PYTHON) -m mkdocs serve
@@ -38,19 +55,19 @@ serve:
 deploy-local: build
 	$(PYTHON) -m publication_pipeline deploy-local \
 		--site-dir $(SITE_DIR) \
-		--state-root $(LOCAL_STATE_ROOT) \
+		--deployment-root $(LOCAL_DEPLOYMENT_ROOT) \
 		--public-path $(LOCAL_PUBLIC_PATH)
 
 preview-local: build
 	$(PYTHON) -m publication_pipeline preview-local \
 		--site-dir $(SITE_DIR) \
-		--state-root $(LOCAL_STATE_ROOT) \
+		--deployment-root $(LOCAL_DEPLOYMENT_ROOT) \
 		--public-path $(LOCAL_PUBLIC_PATH) \
 		--branch "$${BRANCH:-preview/local}"
 
 rollback-local:
 	$(PYTHON) -m publication_pipeline rollback-local \
-		--state-root $(LOCAL_STATE_ROOT) \
+		--deployment-root $(LOCAL_DEPLOYMENT_ROOT) \
 		--public-path $(LOCAL_PUBLIC_PATH)
 
 benchmark-local:

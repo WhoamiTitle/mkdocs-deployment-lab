@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -7,6 +5,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from publication_pipeline.application.models import (
+    BranchSlug,
     Release,
     RsyncTransferMetrics,
     SourceRevision,
@@ -28,14 +27,18 @@ class _RecordingSshGateway(SshRsyncReleaseGateway):
     def _validate_local_credentials(self) -> None:
         return
 
-    def _ssh(self, script: str) -> None:
+    def _run_ssh_command(self, script: str) -> None:
         self.commands.append(script)
 
-    def _ssh_capture(self, script: str) -> str:
+    def _capture_ssh_output(self, script: str) -> str:
         self.commands.append(script)
         return self.capture_output
 
-    def _rsync(self, source: Path, destination: PurePosixPath) -> RsyncTransferMetrics:
+    def _transfer_with_rsync(
+        self,
+        source: Path,
+        destination: PurePosixPath,
+    ) -> RsyncTransferMetrics:
         return RsyncTransferMetrics(
             duration_seconds=0.25,
             file_count=10,
@@ -114,17 +117,38 @@ def test_all_link_switches_use_platform_aware_atomic_replacer(tmp_path: Path) ->
 
     gateway.publish(release, tmp_path / "production")
     production_command = gateway.commands[-1]
-    gateway.publish_preview(release, tmp_path / "preview", "feature-report-abcd1234")
+    gateway.publish_preview(
+        release,
+        tmp_path / "preview",
+        BranchSlug("feature-report-abcd1234"),
+    )
     preview_command = gateway.commands[-1]
     gateway.rollback()
     rollback_command = gateway.commands[-1]
 
     assert 'replace_symlink_atomically "$root/current.next" "$root/current"' in (production_command)
     assert 'replace_symlink_atomically "$public.next" "$public"' in production_command
+    assert 'ln -sfn "$root/current" "$public.next"' in production_command
+    assert production_command.index('replace_symlink_atomically "$public.next" "$public"') < (
+        production_command.index('replace_symlink_atomically "$root/current.next" "$root/current"')
+    )
+    assert "trap restore_production_links EXIT" in production_command
     assert "replace_symlink_atomically" in preview_command
     assert 'replace_symlink_atomically "$root/current.next" "$root/current"' in rollback_command
     assert 'replace_symlink_atomically "$root/previous.next" "$root/previous"' in rollback_command
     assert 'replace_symlink_atomically "$public.next" "$public"' in rollback_command
+    assert rollback_command.index('replace_symlink_atomically "$public.next" "$public"') < (
+        rollback_command.index('replace_symlink_atomically "$root/current.next" "$root/current"')
+    )
+
+    for command in (production_command, rollback_command):
+        process = subprocess.run(
+            ["sh", "-n", "-c", command],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert process.returncode == 0, process.stderr
 
 
 def test_rsync_statistics_are_parsed_as_exact_bytes() -> None:
@@ -178,9 +202,9 @@ def test_cleanup_preview_removes_only_validated_branch_paths(tmp_path: Path) -> 
     gateway = _RecordingSshGateway(settings)
     gateway.capture_output = "2\n"
 
-    receipt = gateway.cleanup_preview("feature-report-abcd1234")
+    receipt = gateway.cleanup_preview(BranchSlug("feature-report-abcd1234"))
 
-    assert receipt.branch_slug == "feature-report-abcd1234"
+    assert receipt.branch_slug == BranchSlug("feature-report-abcd1234")
     assert receipt.removed_release_count == 2
     assert "shared-previews/feature-report-abcd1234" in gateway.commands[-1]
     assert "preview-releases/feature-report-abcd1234" in gateway.commands[-1]

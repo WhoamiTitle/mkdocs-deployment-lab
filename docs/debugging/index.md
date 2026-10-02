@@ -186,9 +186,9 @@ Error: Process completed with exit code 2.
 
 ```text
 All checks passed!
-30 files already formatted
-Success: no issues found in 30 source files
-34 passed
+31 files already formatted
+Success: no issues found in 31 source files
+46 passed
 Documentation built
 scanned_html_files: 20
 scanned_css_files: 4

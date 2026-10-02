@@ -6,12 +6,18 @@ on:
 permissions:
   contents: read
 
+env:
+  UV_VERSION: "0.12.22"
+
 jobs:
   rollback:
     if: vars.HELIOS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: helios-production
+    concurrency:
+      group: helios-production
+      cancel-in-progress: false
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -20,13 +26,11 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
-          cache: pip
-          cache-dependency-path: requirements.txt
 
       - name: Install locked dependencies
         run: |
-          python -m pip install --requirement requirements.txt
-          python -m pip install --no-deps --editable .
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
 
       - name: Prepare protected SSH files
         env:
@@ -48,13 +52,30 @@ jobs:
           HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
           HELIOS_SSH_KEY_PATH: .secrets/helios_key
           HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
-        run: python -m publication_pipeline rollback-ssh
+        run: >-
+          .venv/bin/python -m publication_pipeline rollback-ssh
+          | tee "$RUNNER_TEMP/helios-rollback.json"
 
       - name: Verify restored site
         env:
           HELIOS_BASE_URL: ${{ vars.HELIOS_BASE_URL }}
-        run: >-
-          python -m publication_pipeline healthcheck
-          --url "$HELIOS_BASE_URL"
-          --attempts 5
-          --delay-seconds 5
+        run: |
+          release_id="$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["release_id"])' \
+            "$RUNNER_TEMP/helios-rollback.json")"
+          .venv/bin/python -m publication_pipeline healthcheck \
+            --url "$HELIOS_BASE_URL" \
+            --expected-text "deployment-marker:${release_id}:" \
+            --attempts 5 \
+            --delay-seconds 5 \
+            | tee "$RUNNER_TEMP/helios-rollback-healthcheck.json"
+
+      - name: Upload rollback receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: helios-rollback-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/helios-rollback.json
+            ${{ runner.temp }}/helios-rollback-healthcheck.json
+          if-no-files-found: warn
+          retention-days: 30

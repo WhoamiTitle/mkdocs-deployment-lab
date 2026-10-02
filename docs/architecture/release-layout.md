@@ -13,12 +13,16 @@ deployment-root/
 ├── current -> releases/<release-b>
 └── previous -> releases/<release-a>
 
-public-path -> deployment-root/releases/<release-b>
+public-path -> deployment-root/current -> releases/<release-b>
 ```
 
 Каждый production-релиз содержит ссылку `previews` на общий каталог preview.
 Благодаря этому URL основной версии остаётся корневым, а preview доступны в
 подкаталогах `previews/<branch-slug>/`.
+
+Публичный путь постоянно указывает на `current`. Поэтому публикация меняет
+видимую версию одной атомарной заменой `current`; отдельного переключения
+публичной ссылки после активации релиза нет.
 
 Разрушительные проверки не используют эту production-структуру. Для них
 создаётся отдельная пара путей:

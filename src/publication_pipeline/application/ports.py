@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Protocol
 
 from publication_pipeline.application.models import (
+    BranchSlug,
     DeploymentReceipt,
     HttpResponse,
     PreviewCleanupReceipt,
@@ -22,27 +23,36 @@ class SiteBuilder(Protocol):
         """Build the site into a clean destination directory."""
 
 
-class ReleasePublisher(Protocol):
+class ReleaseArtifactWriter(Protocol):
+    def write(self, destination: Path, release: Release) -> None:
+        """Attach release metadata to a generated site artifact."""
+
+
+class ProductionReleasePublisher(Protocol):
     def publish(self, release: Release, source: Path) -> DeploymentReceipt:
         """Atomically make a production release public."""
 
+
+class PreviewPublisher(Protocol):
     def publish_preview(
         self,
         release: Release,
         source: Path,
-        branch_slug: str,
+        branch_slug: BranchSlug,
     ) -> DeploymentReceipt:
         """Atomically publish one branch preview."""
 
+
+class ReleaseRollback(Protocol):
     def rollback(self) -> DeploymentReceipt:
         """Swap the current and previous production releases."""
 
 
 class PreviewCleaner(Protocol):
-    def cleanup_preview(self, branch_slug: str) -> PreviewCleanupReceipt:
+    def cleanup_preview(self, branch_slug: BranchSlug) -> PreviewCleanupReceipt:
         """Remove the public link and immutable releases for one preview branch."""
 
 
 class HttpClient(Protocol):
-    def get(self, url: str) -> HttpResponse:
+    def fetch(self, url: str) -> HttpResponse:
         """Fetch a text response without following application-specific rules."""

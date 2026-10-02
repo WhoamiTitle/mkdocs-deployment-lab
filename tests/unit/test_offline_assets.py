@@ -3,7 +3,10 @@ from pathlib import Path
 import pytest
 
 from publication_pipeline.application.errors import InvalidArtifactError
-from publication_pipeline.application.verify_offline_assets import VerifyOfflineAssets
+from publication_pipeline.application.verify_offline_assets import (
+    VerifyOfflineAssets,
+    VerifyOfflineAssetsRequest,
+)
 
 
 def test_accepts_local_runtime_assets_and_external_anchors(tmp_path: Path) -> None:
@@ -20,7 +23,7 @@ def test_accepts_local_runtime_assets_and_external_anchors(tmp_path: Path) -> No
         encoding="utf-8",
     )
 
-    report = VerifyOfflineAssets().execute(tmp_path)
+    report = VerifyOfflineAssets().execute(VerifyOfflineAssetsRequest(site_directory=tmp_path))
 
     assert report.external_assets == ()
 
@@ -36,7 +39,7 @@ def test_rejects_external_script_and_css_font(tmp_path: Path) -> None:
     )
 
     with pytest.raises(InvalidArtifactError) as captured:
-        VerifyOfflineAssets().execute(tmp_path)
+        VerifyOfflineAssets().execute(VerifyOfflineAssetsRequest(site_directory=tmp_path))
 
     message = str(captured.value)
     assert "app.js" in message

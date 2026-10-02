@@ -1,7 +1,5 @@
 """Run destructive deployment checks only against the dedicated Helios sandbox."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -18,26 +16,31 @@ from urllib.error import HTTPError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
 
-from publication_pipeline.application.build_release import load_release
 from publication_pipeline.application.errors import HealthcheckError, PublicationError
 from publication_pipeline.application.models import (
+    BranchSlug,
     DeploymentReceipt,
     Release,
-    branch_to_slug,
 )
-from publication_pipeline.application.verify_release import VerifyRelease
-from publication_pipeline.infrastructure.git_gateway import GitGateway
-from publication_pipeline.infrastructure.http_gateway import UrllibHttpGateway
+from publication_pipeline.application.verify_release import VerifyRelease, VerifyReleaseRequest
+from publication_pipeline.infrastructure.filesystem_release_artifact_store import (
+    FilesystemReleaseArtifactStore,
+)
+from publication_pipeline.infrastructure.git_source_control import GitSourceControl
 from publication_pipeline.infrastructure.ssh_rsync_gateway import (
     SshRsyncReleaseGateway,
     SshRsyncSettings,
 )
+from publication_pipeline.infrastructure.urllib_http_client import UrllibHttpClient
 
 _CONTROL_TEXT = "publication-site-control"
 _SANDBOX_DEPLOYMENT_ROOT = PurePosixPath(".deployments/mkdocs-deployment-lab-sandbox")
 _SANDBOX_PUBLIC_PATH = PurePosixPath("public_html/mkdocs-deployment-lab-sandbox")
 _SANDBOX_URL_SUFFIX = "/mkdocs-deployment-lab-sandbox/"
 _CLEANUP_ENV = "ALLOW_DESTRUCTIVE_TEST_CLEANUP"
+_BUILD_TIMEOUT_SECONDS = 300
+_SSH_TIMEOUT_SECONDS = 60
+_RSYNC_TIMEOUT_SECONDS = 60
 
 ScenarioValue = str | int | float | bool
 
@@ -59,7 +62,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
         public_path=cast(str, args.public_path),
     )
     _validate_sandbox_targets(settings, base_url)
-    revision = GitGateway(repository_root).revision()
+    revision = GitSourceControl(repository_root).revision()
     if revision.dirty:
         raise PublicationError("Resilience evidence must be produced from a clean revision")
     _assert_sandbox_absent(settings)
@@ -69,16 +72,17 @@ def main(arguments: Sequence[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="mkdocs-helios-resilience-") as temporary:
         temporary_root = Path(temporary)
         first_site = _build_site(repository_root, temporary_root / "first", base_url)
-        first_release = load_release(first_site)
+        release_store = FilesystemReleaseArtifactStore()
+        first_release = release_store.read(first_site)
         _wait_for_distinct_release_id(first_release)
         second_site = _build_site(repository_root, temporary_root / "second", base_url)
-        second_release = load_release(second_site)
+        second_release = release_store.read(second_site)
         _wait_for_distinct_release_id(second_release)
         third_site = _build_site(repository_root, temporary_root / "third", base_url)
-        third_release = load_release(third_site)
+        third_release = release_store.read(third_site)
         _wait_for_distinct_release_id(third_release)
         invalid_site = _build_site(repository_root, temporary_root / "invalid", base_url)
-        invalid_release = load_release(invalid_site)
+        invalid_release = release_store.read(invalid_site)
 
         first_receipt = gateway.publish(first_release, first_site)
         _verify_release(base_url, first_release)
@@ -105,11 +109,16 @@ def main(arguments: Sequence[str] | None = None) -> int:
 
         gateway.publish(third_release, third_site)
         try:
-            VerifyRelease(UrllibHttpGateway()).execute(
-                base_url,
-                (_CONTROL_TEXT, "deliberately-missing-healthcheck-marker"),
-                attempts=1,
-                delay_seconds=0,
+            VerifyRelease(UrllibHttpClient()).execute(
+                VerifyReleaseRequest(
+                    url=base_url,
+                    expected_texts=(
+                        _CONTROL_TEXT,
+                        "deliberately-missing-healthcheck-marker",
+                    ),
+                    attempts=1,
+                    delay_seconds=0,
+                )
             )
         except HealthcheckError:
             automatic_rollback_started = time.perf_counter()
@@ -171,9 +180,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
         )
 
         preview_branch = "test/helios-sandbox-cleanup"
-        preview_slug = branch_to_slug(preview_branch)
+        preview_slug = BranchSlug.from_branch(preview_branch)
         gateway.publish_preview(third_release, third_site, preview_slug)
-        preview_url = urljoin(base_url, f"previews/{preview_slug}/")
+        preview_url = urljoin(base_url, f"previews/{preview_slug.value}/")
         _verify_release(preview_url, third_release)
         cleanup_receipt = gateway.cleanup_preview(preview_slug)
         _verify_http_status(preview_url, expected_status=404)
@@ -181,16 +190,18 @@ def main(arguments: Sequence[str] | None = None) -> int:
             {
                 "name": "stale-preview-cleanup",
                 "result": "success",
-                "branch_slug": preview_slug,
+                "branch_slug": preview_slug.value,
                 "removed_release_count": cleanup_receipt.removed_release_count,
             }
         )
 
-        VerifyRelease(UrllibHttpGateway()).execute(
-            production_url,
-            (_CONTROL_TEXT,),
-            attempts=3,
-            delay_seconds=1,
+        VerifyRelease(UrllibHttpClient()).execute(
+            VerifyReleaseRequest(
+                url=production_url,
+                expected_texts=(_CONTROL_TEXT,),
+                attempts=3,
+                delay_seconds=1,
+            )
         )
         scenarios.append(
             {
@@ -267,23 +278,32 @@ def _validate_sandbox_targets(settings: SshRsyncSettings, base_url: str) -> None
 
 def _build_site(repository_root: Path, destination: Path, base_url: str) -> Path:
     environment = {**os.environ, "SITE_URL": base_url}
-    process = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "publication_pipeline",
-            "build",
-            "--repository-root",
-            str(repository_root),
-            "--site-dir",
-            str(destination),
-        ],
-        cwd=repository_root,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    command = [
+        sys.executable,
+        "-m",
+        "publication_pipeline",
+        "build",
+        "--repository-root",
+        str(repository_root),
+        "--site-dir",
+        str(destination),
+    ]
+    try:
+        process = subprocess.run(
+            command,
+            cwd=repository_root,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_BUILD_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise PublicationError(
+            f"Sandbox site build exceeded {_BUILD_TIMEOUT_SECONDS} seconds"
+        ) from error
+    except OSError as error:
+        raise PublicationError("Could not start sandbox site build") from error
     if process.returncode != 0:
         raise PublicationError(f"Sandbox site build failed: {process.stderr[-2000:]}")
     return destination
@@ -297,11 +317,13 @@ def _wait_for_distinct_release_id(release: Release) -> None:
 
 
 def _verify_release(base_url: str, release: Release) -> None:
-    VerifyRelease(UrllibHttpGateway()).execute(
-        base_url,
-        (_CONTROL_TEXT, release.marker),
-        attempts=5,
-        delay_seconds=1,
+    VerifyRelease(UrllibHttpClient()).execute(
+        VerifyReleaseRequest(
+            url=base_url,
+            expected_texts=(_CONTROL_TEXT, release.marker),
+            attempts=5,
+            delay_seconds=1,
+        )
     )
 
 
@@ -322,7 +344,7 @@ def _successful_deploy(name: str, receipt: DeploymentReceipt) -> dict[str, Scena
 def _expect_publication_failure(action: Callable[[], DeploymentReceipt]) -> str:
     try:
         action()
-    except (PublicationError, subprocess.CalledProcessError) as error:
+    except PublicationError as error:
         return type(error).__name__
     raise AssertionError("The unsafe publication unexpectedly succeeded")
 
@@ -330,7 +352,7 @@ def _expect_publication_failure(action: Callable[[], DeploymentReceipt]) -> str:
 def _assert_sandbox_absent(settings: SshRsyncSettings) -> None:
     root = settings.deployment_root.as_posix()
     public = settings.public_path.as_posix()
-    _ssh_capture(
+    _capture_ssh_output(
         settings,
         f'root="$HOME/{root}"; public="$HOME/{public}"; '
         'test ! -e "$root"; test ! -L "$public"; test ! -e "$public"; printf "clean\\n"',
@@ -339,7 +361,7 @@ def _assert_sandbox_absent(settings: SshRsyncSettings) -> None:
 
 def _assert_active_release(settings: SshRsyncSettings, expected_release_id: str) -> None:
     root = settings.deployment_root.as_posix()
-    active = _ssh_capture(
+    active = _capture_ssh_output(
         settings,
         f'root="$HOME/{root}"; basename "$(readlink "$root/current")"',
     ).strip()
@@ -353,7 +375,7 @@ def _upload_partial_staging(
     staging_name: str,
 ) -> None:
     root = settings.deployment_root.as_posix()
-    _ssh_capture(
+    _capture_ssh_output(
         settings,
         f'root="$HOME/{root}"; stage="$root/releases/{staging_name}"; '
         'test ! -e "$stage"; mkdir -p "$stage"',
@@ -363,17 +385,33 @@ def _upload_partial_staging(
         f"{settings.user}@{settings.host}:"
         f"{settings.deployment_root.as_posix()}/releases/{staging_name}/"
     )
-    subprocess.run(
-        ["rsync", "--archive", "-e", ssh_transport, str(release_file), remote],
-        check=True,
-    )
+    command = ["rsync", "--archive", "-e", ssh_transport, str(release_file), remote]
+    try:
+        process = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_RSYNC_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise PublicationError(
+            f"Partial rsync upload exceeded {_RSYNC_TIMEOUT_SECONDS} seconds"
+        ) from error
+    except OSError as error:
+        raise PublicationError("Could not start partial rsync upload") from error
+    if process.returncode != 0:
+        detail = process.stderr.strip() or process.stdout.strip() or "no diagnostic output"
+        raise PublicationError(
+            f"Partial rsync upload failed with exit code {process.returncode}: {detail}"
+        )
 
 
 def _remove_staging_directory(settings: SshRsyncSettings, staging_name: str) -> None:
     if not staging_name.startswith(".staging-") or "/" in staging_name:
         raise PublicationError(f"Unsafe staging cleanup target: {staging_name!r}")
     root = settings.deployment_root.as_posix()
-    _ssh_capture(
+    _capture_ssh_output(
         settings,
         f'root="$HOME/{root}"; stage="$root/releases/{staging_name}"; rm -rf -- "$stage"',
     )
@@ -382,7 +420,7 @@ def _remove_staging_directory(settings: SshRsyncSettings, staging_name: str) -> 
 def _cleanup_sandbox(settings: SshRsyncSettings) -> None:
     root = settings.deployment_root.as_posix()
     public = settings.public_path.as_posix()
-    _ssh_capture(
+    _capture_ssh_output(
         settings,
         f'root="$HOME/{root}"; public="$HOME/{public}"; '
         'if [ -e "$public" ] && [ ! -L "$public" ]; then '
@@ -412,13 +450,31 @@ def _verify_http_status(url: str, *, expected_status: int) -> None:
     raise AssertionError(f"HTTP status for {url} is {last_status}, expected {expected_status}")
 
 
-def _ssh_capture(settings: SshRsyncSettings, script: str) -> str:
-    process = subprocess.run(
-        [*_ssh_arguments(settings), f"{settings.user}@{settings.host}", f"set -eu; {script}"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+def _capture_ssh_output(settings: SshRsyncSettings, script: str) -> str:
+    command = [
+        *_ssh_arguments(settings),
+        f"{settings.user}@{settings.host}",
+        f"set -eu; {script}",
+    ]
+    try:
+        process = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_SSH_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise PublicationError(
+            f"Sandbox SSH command exceeded {_SSH_TIMEOUT_SECONDS} seconds"
+        ) from error
+    except OSError as error:
+        raise PublicationError("Could not start sandbox SSH command") from error
+    if process.returncode != 0:
+        detail = process.stderr.strip() or process.stdout.strip() or "no diagnostic output"
+        raise PublicationError(
+            f"Sandbox SSH command failed with exit code {process.returncode}: {detail}"
+        )
     return process.stdout
 
 
@@ -437,6 +493,12 @@ def _ssh_arguments(settings: SshRsyncSettings) -> tuple[str, ...]:
         "StrictHostKeyChecking=yes",
         "-o",
         f"UserKnownHostsFile={settings.known_hosts}",
+        "-o",
+        "ConnectTimeout=15",
+        "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=3",
     )
 
 

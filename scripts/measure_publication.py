@@ -1,7 +1,5 @@
 """Collect raw build and publication timing observations for the T4/P4 report."""
 
-from __future__ import annotations
-
 import argparse
 import csv
 import json
@@ -23,11 +21,15 @@ from typing import cast
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
-from publication_pipeline.application.build_release import load_release
 from publication_pipeline.application.models import Release
-from publication_pipeline.infrastructure.git_gateway import GitGateway
+from publication_pipeline.application.release_document import JsonValue, release_from_document
+from publication_pipeline.infrastructure.filesystem_release_artifact_store import (
+    FilesystemReleaseArtifactStore,
+)
+from publication_pipeline.infrastructure.git_source_control import GitSourceControl
 
 _CONTROL_TEXT = "publication-site-control"
+_COMMAND_TIMEOUT_SECONDS = 300
 _BUILD_FIELDS = (
     "environment",
     "run",
@@ -132,22 +134,42 @@ class PublicationMeasurement:
 
 
 class _QuietRequestHandler(SimpleHTTPRequestHandler):
-    def log_message(self, message_format: str, *arguments: object) -> None:
+    def log_message(self, message_format: str, *arguments: str) -> None:
         return
+
+
+@dataclass(slots=True, init=False)
+class ParsedMeasurementArguments:
+    command: str
+    repository_root: str
+    runs: int
+    run_start: int
+    build_output: str
+    publication_output: str
+    platform: str
+    method: str
+    run: int
+    url: str
+    expected_commit: str
+    started_at_utc: str
+    measurement_scope: str
+    output: str
+    attempts: int
+    delay_seconds: float
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
     parser = _create_parser()
-    args = parser.parse_args(arguments)
-    command = cast(str, args.command)
-    if command == "timestamp":
+    parsed_arguments = ParsedMeasurementArguments()
+    parser.parse_args(arguments, namespace=parsed_arguments)
+    if parsed_arguments.command == "timestamp":
         print(_format_datetime(datetime.now(UTC)))
         return 0
-    if command == "local":
-        return _measure_local(args)
-    if command == "observe":
-        return _observe_publication(args)
-    parser.error(f"Unknown command: {command}")
+    if parsed_arguments.command == "local":
+        return _measure_local(parsed_arguments)
+    if parsed_arguments.command == "observe":
+        return _observe_publication(parsed_arguments)
+    parser.error(f"Unknown command: {parsed_arguments.command}")
 
 
 def _create_parser() -> argparse.ArgumentParser:
@@ -195,18 +217,18 @@ def _create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _measure_local(args: argparse.Namespace) -> int:
-    repository_root = Path(cast(str, args.repository_root)).resolve()
-    runs = cast(int, args.runs)
-    run_start = cast(int, args.run_start)
+def _measure_local(arguments: ParsedMeasurementArguments) -> int:
+    repository_root = Path(arguments.repository_root).resolve()
+    runs = arguments.runs
+    run_start = arguments.run_start
     if runs < 1:
         raise ValueError("runs must be at least one")
     if run_start < 1:
         raise ValueError("run-start must be at least one")
 
-    build_output = _resolve_output(repository_root, cast(str, args.build_output))
-    publication_output = _resolve_output(repository_root, cast(str, args.publication_output))
-    revision = GitGateway(repository_root).revision()
+    build_output = _resolve_output(repository_root, arguments.build_output)
+    publication_output = _resolve_output(repository_root, arguments.publication_output)
+    revision = GitSourceControl(repository_root).revision()
     environment = _environment_name()
     build_measurements: list[BuildMeasurement] = []
     publication_measurements: list[PublicationMeasurement] = []
@@ -237,8 +259,8 @@ def _measure_local(args: argparse.Namespace) -> int:
                 )
                 build_duration = _elapsed_seconds(build_timer)
                 build_finished = datetime.now(UTC)
-                release = load_release(site_directory)
-                artifact_size, file_count = _artifact_metrics(site_directory)
+                release = FilesystemReleaseArtifactStore().read(site_directory)
+                artifact_size, file_count = _measure_artifact(site_directory)
                 build_measurement = BuildMeasurement(
                     environment=environment,
                     run=run,
@@ -267,7 +289,7 @@ def _measure_local(args: argparse.Namespace) -> int:
                         "deploy-local",
                         "--site-dir",
                         str(site_directory),
-                        "--state-root",
+                        "--deployment-root",
                         str(deployment_root),
                         "--public-path",
                         str(public_path),
@@ -335,10 +357,10 @@ def _measure_local(args: argparse.Namespace) -> int:
     return 0
 
 
-def _observe_publication(args: argparse.Namespace) -> int:
-    attempts = cast(int, args.attempts)
-    delay_seconds = cast(float, args.delay_seconds)
-    run = cast(int, args.run)
+def _observe_publication(arguments: ParsedMeasurementArguments) -> int:
+    attempts = arguments.attempts
+    delay_seconds = arguments.delay_seconds
+    run = arguments.run
     if attempts < 1:
         raise ValueError("attempts must be at least one")
     if delay_seconds < 0:
@@ -346,9 +368,9 @@ def _observe_publication(args: argparse.Namespace) -> int:
     if run < 1:
         raise ValueError("run must be at least one")
 
-    started_at = parse_utc_datetime(cast(str, args.started_at_utc))
-    expected_commit = cast(str, args.expected_commit)
-    base_url = _normalized_base_url(cast(str, args.url))
+    started_at = parse_utc_datetime(arguments.started_at_utc)
+    expected_commit = arguments.expected_commit
+    base_url = _normalized_base_url(arguments.url)
     last_problem = "publication was not checked"
 
     for attempt in range(1, attempts + 1):
@@ -362,8 +384,8 @@ def _observe_publication(args: argparse.Namespace) -> int:
                 _verify_root_page(base_url, expected_commit)
                 healthcheck_at = datetime.now(UTC)
                 measurement = PublicationMeasurement(
-                    platform=cast(str, args.platform),
-                    method=cast(str, args.method),
+                    platform=arguments.platform,
+                    method=arguments.method,
                     run=run,
                     started_at_utc=started_at,
                     healthcheck_at_utc=healthcheck_at,
@@ -373,12 +395,12 @@ def _observe_publication(args: argparse.Namespace) -> int:
                     release_id=release.release_id,
                     release_built_at_utc=release.built_at,
                     url=base_url,
-                    measurement_scope=cast(str, args.measurement_scope),
+                    measurement_scope=arguments.measurement_scope,
                     artifact_size_bytes=None,
                     file_count=None,
                     notes=f"release.json and root marker matched; attempts={attempt}",
                 )
-                output = Path(cast(str, args.output)).resolve()
+                output = Path(arguments.output).resolve()
                 _append_csv(output, _PUBLICATION_FIELDS, measurement.as_csv_row())
                 print(json.dumps(measurement.as_csv_row(), ensure_ascii=False, indent=2))
                 return 0
@@ -409,10 +431,8 @@ def _fetch_release(base_url: str) -> Release:
     with urlopen(request, timeout=10) as response:
         if response.status != 200:
             raise OSError(f"release metadata returned HTTP {response.status}")
-        raw_value = json.loads(response.read().decode("utf-8"))
-    if not isinstance(raw_value, dict):
-        raise ValueError("release metadata must be a JSON object")
-    return Release.from_dict(cast(dict[str, object], raw_value))
+        raw_value: JsonValue = json.loads(response.read().decode("utf-8"))
+    return release_from_document(raw_value)
 
 
 def _verify_root_page(base_url: str, expected_commit: str) -> None:
@@ -472,15 +492,23 @@ def _run_command(
     process_environment = os.environ.copy()
     if environment is not None:
         process_environment.update(environment)
-    process = subprocess.run(
-        command,
-        cwd=cwd,
-        env=process_environment,
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
+    try:
+        process = subprocess.run(
+            command,
+            cwd=cwd,
+            env=process_environment,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"command exceeded {_COMMAND_TIMEOUT_SECONDS} seconds: {' '.join(command)}"
+        ) from error
+    except OSError as error:
+        raise RuntimeError(f"could not start command: {' '.join(command)}") from error
     if process.returncode != 0:
         raise RuntimeError(
             f"command failed with exit code {process.returncode}: {' '.join(command)}\n"
@@ -488,7 +516,7 @@ def _run_command(
         )
 
 
-def _artifact_metrics(site_directory: Path) -> tuple[int, int]:
+def _measure_artifact(site_directory: Path) -> tuple[int, int]:
     files = tuple(path for path in site_directory.rglob("*") if path.is_file())
     return sum(path.stat().st_size for path in files), len(files)
 

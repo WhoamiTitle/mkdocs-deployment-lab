@@ -6,15 +6,26 @@
 
 ```mermaid
 flowchart LR
-    A[GitHub Actions или Make] --> B[CLI]
-    B --> C[Application]
+    A[GitHub Actions или Make] --> B[Presentation: CLI]
+    B --> R[Composition root]
+    R --> C[Application]
+    R --> E[Infrastructure]
     C --> D[Ports]
-    E[Infrastructure] --> D
+    E --> D
     E --> F[MkDocs]
     E --> G[Git]
     E --> H[SSH и rsync]
     E --> I[HTTP]
 ```
+
+`publication_pipeline.__main__` только передаёт управление composition root.
+CLI-грамматика и JSON-документы находятся в `presentation`, сценарии зависят
+только от application-портов, а import-linter запрещает обратные зависимости
+из внутренних слоёв во внешние.
+
+Файловый адаптер добавляет release marker в HTML и сохраняет `release.json`.
+Поэтому сценарий `BuildRelease` координирует операции, но не читает и не
+изменяет файлы напрямую.
 
 ## Прикладные операции
 

@@ -13,11 +13,21 @@ preview-сборки, healthcheck и откат.
 
 ## Локальный запуск
 
-Требуются Python 3.13 и `uv` 0.12.22. `uv` проверяет актуальность
-`uv.lock` и создаёт проектное окружение `.venv`.
+Требуется Python 3.13. Перед первоначальной настройкой проверяются Python и
+`pip`, затем через `pip` устанавливается зафиксированная версия `uv`:
 
 ```bash
-make setup
+python3 --version
+python3 -m pip --version
+python3 -m pip install "uv==0.12.22"
+uv sync --locked
+```
+
+Команда `uv sync --locked` проверяет соответствие `pyproject.toml` файлу
+`uv.lock` и создаёт проектное виртуальное окружение `.venv`; отдельная команда
+`virtualenv` не требуется. После настройки проект проверяется и запускается так:
+
+```bash
 make check
 make serve
 ```

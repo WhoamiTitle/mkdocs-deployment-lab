@@ -182,13 +182,14 @@ Error: Process completed with exit code 2.
 
 ## Контрольный результат
 
-После исправлений полный pipeline завершился успешно:
+После исправлений контрольный запуск 3 октября 2026 года завершился успешно:
 
 ```text
 All checks passed!
-31 files already formatted
-Success: no issues found in 31 source files
-46 passed
+48 files already formatted
+Success: no issues found in 48 source files
+83 passed
+Total coverage: 81.58%
 Documentation built
 scanned_html_files: 20
 scanned_css_files: 4

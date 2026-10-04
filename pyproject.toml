@@ -9,6 +9,7 @@ authors = [
   { name = "Vasiliy" },
 ]
 dependencies = [
+  "mike==2.2.0",
   "mkdocs==1.6.1",
   "mkdocs-material==9.7.7",
   "pymdown-extensions==12.1",
@@ -38,7 +39,7 @@ requires = ["setuptools==80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.codespell]
-skip = ".git,.venv,site,.local-deploy,docs/assets/vendor"
+skip = ".git,.venv,site,.local-deploy,node_modules,docs/assets/vendor"
 ignore-words-list = "crate,fo"
 
 [tool.coverage.run]

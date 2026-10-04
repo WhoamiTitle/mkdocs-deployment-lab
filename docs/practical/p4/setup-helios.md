@@ -99,8 +99,9 @@ SHA256:3n1x6Bq0hnfyxrWB/YeQQPaxUkE/GCX2vKKtl0nzGgM
 ## 5. Первая публикация
 
 После заполнения Variables и Secrets push в `main` запускает production deploy.
-Push в другую ветку создаёт адрес
-`<HELIOS_BASE_URL>/previews/<branch-slug>/`.
+Это поведение исходного P4; в текущем P5 любой push ветки создаёт
+`<HELIOS_BASE_URL>/previews/<branch-slug>/`, а стабильный deploy запускается
+тегом. Подробности приведены в [P5](../p5/index.md).
 
 Перед включением `HELIOS_ENABLED` необходимо проверить, что `public_path` не
 занят обычным каталогом: pipeline управляет этим путём как символической

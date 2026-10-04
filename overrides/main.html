@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block scripts %}
+<script>
+  // Retain Material's generated worker URL; the wrapper is local to this version.
+  const searchConfigElement = document.getElementById("__config");
+  const searchConfig = JSON.parse(searchConfigElement.textContent);
+  const originalSearchWorker = new URL(searchConfig.search, location.href);
+  const russianSearchWorker = new URL({{ 'assets/javascripts/workers/russian-search.js' | url | tojson }}, location.href);
+  russianSearchWorker.searchParams.set("worker", originalSearchWorker.href);
+  searchConfig.search = russianSearchWorker.href;
+  searchConfigElement.textContent = JSON.stringify(searchConfig);
+</script>
+{{ super() }}
+{% endblock %}

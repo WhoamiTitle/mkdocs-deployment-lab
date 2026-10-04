@@ -1,0 +1,91 @@
+{
+  "search_language": "ru,en",
+  "version_switcher": true,
+  "external_requests": [],
+  "browser_errors": [],
+  "results": [
+    {
+      "query": "измерениями",
+      "form": "измерения",
+      "page": "experiment/results/",
+      "passed": true,
+      "matches": 6,
+      "locations": [
+        "/v1.1/research/t4/cdn-independence/",
+        "/v1.1/experiment/",
+        "/v1.1/experiment/results/",
+        "/v1.1/practical/p5/",
+        "/v1.1/",
+        "/v1.1/research/t4/"
+      ]
+    },
+    {
+      "query": "публикациями",
+      "form": "публикация",
+      "page": "index.html",
+      "passed": true,
+      "matches": 10,
+      "locations": [
+        "/v1.1/",
+        "/v1.1/practical/p4/pipeline/",
+        "/v1.1/practical/p5/",
+        "/v1.1/conclusion/",
+        "/v1.1/evidence/",
+        "/v1.1/experiment/",
+        "/v1.1/practical/p4/setup-helios/",
+        "/v1.1/architecture/overview/",
+        "/v1.1/architecture/release-layout/",
+        "/v1.1/practical/p4/"
+      ]
+    },
+    {
+      "query": "угрозами",
+      "form": "угроз",
+      "page": "research/t4/security/",
+      "passed": true,
+      "matches": 3,
+      "locations": [
+        "/v1.1/research/t4/security/",
+        "/v1.1/research/t4/deployment-methods/",
+        "/v1.1/research/t4/"
+      ]
+    },
+    {
+      "query": "ключами",
+      "form": "ключ",
+      "page": "practical/p4/setup-helios/",
+      "passed": true,
+      "matches": 9,
+      "locations": [
+        "/v1.1/practical/p4/setup-helios/",
+        "/v1.1/research/t4/security/",
+        "/v1.1/practical/p4/",
+        "/v1.1/research/t4/deployment-methods/",
+        "/v1.1/conclusion/",
+        "/v1.1/experiment/results/",
+        "/v1.1/",
+        "/v1.1/architecture/deployment-contract/",
+        "/v1.1/practical/p4/pipeline/"
+      ]
+    },
+    {
+      "query": "ветками",
+      "form": "ветки",
+      "page": "practical/p4/previews/",
+      "passed": true,
+      "matches": 10,
+      "locations": [
+        "/v1.1/research/t4/deployment-methods/",
+        "/v1.1/practical/p4/previews/",
+        "/v1.1/practical/p4/",
+        "/v1.1/practical/p4/pipeline/",
+        "/v1.1/debugging/",
+        "/v1.1/experiment/results/",
+        "/v1.1/practical/p5/",
+        "/v1.1/evidence/",
+        "/v1.1/practical/p4/setup-helios/",
+        "/v1.1/"
+      ]
+    }
+  ]
+}

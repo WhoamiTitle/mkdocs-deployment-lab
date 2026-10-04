@@ -1,0 +1,7 @@
+[
+  {"query": "измерениями", "form": "измерения", "page": "experiment/results/"},
+  {"query": "публикациями", "form": "публикация", "page": "index.html"},
+  {"query": "угрозами", "form": "угроз", "page": "research/t4/security/"},
+  {"query": "ключами", "form": "ключ", "page": "practical/p4/setup-helios/"},
+  {"query": "ветками", "form": "ветки", "page": "practical/p4/previews/"}
+]

@@ -1,0 +1,22 @@
+INHERIT: mkdocs.yml
+
+theme:
+  custom_dir: overrides
+
+extra:
+  version:
+    provider: mike
+    default: latest
+
+plugins:
+  - search:
+      separator: '[\s\-]+'
+      lang:
+        - ru
+        - en
+      pipeline:
+        - stemmer
+        - stopWordFilter
+        - trimmer
+  - mike:
+      alias_type: redirect

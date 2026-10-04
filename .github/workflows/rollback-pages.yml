@@ -1,0 +1,20 @@
+name: Roll back GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: site-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/site-operation.yml
+    with:
+      operation: rollback-pages
+    secrets: inherit

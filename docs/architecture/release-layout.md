@@ -17,7 +17,8 @@ public-path -> deployment-root/current -> releases/<release-b>
 ```
 
 Каждый production-релиз содержит ссылку `previews` на общий каталог preview.
-Благодаря этому URL основной версии остаётся корневым, а preview доступны в
+В P5 внутри релиза находятся `v1.0/`, `v1.1/`, `latest/`, `versions.json` и
+корневой redirect. Благодаря этому корень ведёт на выбранную версию, а preview доступны в
 подкаталогах `previews/<branch-slug>/`.
 
 Публичный путь постоянно указывает на `current`. Поэтому публикация меняет

@@ -1,0 +1,511 @@
+name: Prepare and deliver site publication
+
+on:
+  workflow_call:
+    inputs:
+      operation:
+        required: true
+        type: string
+      name:
+        default: ""
+        type: string
+      version:
+        default: ""
+        type: string
+      target:
+        default: ""
+        type: string
+permissions:
+  contents: read
+env:
+  UV_VERSION: "0.12.22"
+  PAGES_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+defaults:
+  run:
+    shell: bash
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    outputs:
+      targets: ${{ steps.prepare.outputs.targets }}
+      helios_action: ${{ steps.prepare.outputs.helios_action }}
+      has_previous_pages: ${{ steps.prepare.outputs.has_previous_pages }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install locked dependencies
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
+      - name: Set up Node for local search verification
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - name: Install locked browser test dependencies
+        run: |
+          npm ci --prefix tools/browser-check
+          tools/browser-check/node_modules/.bin/playwright install --with-deps chromium
+      - name: Build and preserve publication state
+        id: prepare
+        env:
+          HELIOS_ENABLED: ${{ vars.HELIOS_ENABLED }}
+          DEPLOY_TARGETS: ${{ vars.DEPLOY_TARGETS }}
+          TARGET_ID: ${{ inputs.target }}
+          OPERATION: ${{ inputs.operation }}
+          BRANCH: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+          CHECK_BROWSER: "true"
+        run: >-
+          .venv/bin/python -m scripts.site_publication --operation "$OPERATION"
+          --name "$BRANCH" --version "$VERSION" --save-state
+      - name: Upload prepared publication and previous Pages delivery
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: site/publication/
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy-pages:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      restored: ${{ steps.restored.outcome == 'success' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install locked dependencies
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
+      - name: Download prepared publication
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: artifacts/pages/
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+      - name: Verify published roots, versions and aliases
+        run: >-
+          .venv/bin/python -m scripts.verify_published_site
+          --url "$PAGES_BASE_URL" --site-dir artifacts/pages
+      - name: Verify removed Pages preview returns 404
+        if: inputs.operation == 'cleanup-preview'
+        env:
+          PREVIEW_BRANCH: ${{ inputs.name }}
+        run: |
+          slug="$(.venv/bin/python -m publication_pipeline branch-slug --branch "$PREVIEW_BRANCH")"
+          status=000
+          for attempt in 1 2 3 4 5; do
+            status="$(curl --location --silent --show-error --output /dev/null \
+              --write-out '%{http_code}' "${PAGES_BASE_URL}previews/${slug}/?cleanup_probe=${GITHUB_RUN_ID}-${attempt}")"
+            if [ "$status" = "404" ]; then
+              break
+            fi
+            sleep 2
+          done
+          test "$status" = "404"
+      - name: Upload previous Pages delivery after failed healthcheck
+        if: failure() && steps.deployment.outcome == 'success' && needs.prepare.outputs.has_previous_pages == 'true'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          name: github-pages-rollback
+          path: artifacts/previous-pages/
+      - name: Restore previous Pages delivery
+        id: restored
+        if: failure() && steps.deployment.outcome == 'success' && needs.prepare.outputs.has_previous_pages == 'true'
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          artifact_name: github-pages-rollback
+      - name: Verify restored Pages delivery
+        if: failure() && steps.restored.outcome == 'success'
+        run: >-
+          .venv/bin/python -m scripts.verify_published_site
+          --url "$PAGES_BASE_URL" --site-dir artifacts/previous-pages
+
+  recover-pages-state:
+    needs: [prepare, deploy-pages]
+    if: always() && needs.deploy-pages.result == 'failure' && needs.prepare.outputs.has_previous_pages == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install locked dependencies
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
+      - name: Restore intended Pages state after failed delivery
+        run: .venv/bin/python -m scripts.site_publication --operation restore-pages --save-state
+
+  confirm-pages-state:
+    needs: [prepare, deploy-pages]
+    if: needs.deploy-pages.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install locked dependencies
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
+      - name: Record verified Pages delivery for future rollback
+        run: .venv/bin/python -m scripts.site_publication --operation confirm-pages --save-state
+
+  deploy-helios-production:
+    if: needs.prepare.outputs.helios_action == 'production' && needs.prepare.outputs.targets != '[]'
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare.outputs.targets) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: helios-production
+    concurrency:
+      group: helios-production-${{ matrix.target.id }}
+      cancel-in-progress: false
+    env:
+      PREVIEW_BRANCH: ${{ inputs.name }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
+
+      - name: Prepare protected SSH files
+        env:
+          HELIOS_SSH_KEY: ${{ secrets[matrix.target.key_secret] }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets[matrix.target.known_hosts_secret] }}
+        run: |
+          test -n "$HELIOS_SSH_KEY" || { echo "Missing SSH key secret" >&2; exit 1; }
+          test -n "$HELIOS_KNOWN_HOSTS" || { echo "Missing known_hosts secret" >&2; exit 1; }
+          install -d -m 700 .secrets
+          install -m 600 /dev/null .secrets/helios_key
+          install -m 600 /dev/null .secrets/known_hosts
+          printf '%s\n' "$HELIOS_SSH_KEY" > .secrets/helios_key
+          printf '%s\n' "$HELIOS_KNOWN_HOSTS" > .secrets/known_hosts
+
+      - name: Download prepared publication
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+      - name: Select target artifact
+        env:
+          TARGET_ID: ${{ matrix.target.id }}
+        run: mv "artifacts/targets/$TARGET_ID" site
+
+      - name: Deploy production release
+        id: deploy
+        env:
+          HELIOS_HOST: ${{ matrix.target.host }}
+          HELIOS_USER: ${{ matrix.target.user }}
+          HELIOS_PORT: ${{ matrix.target.port }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ matrix.target.deployment_root }}
+          HELIOS_PUBLIC_PATH: ${{ matrix.target.public_path }}
+          HELIOS_SSH_KEY_PATH: .secrets/helios_key
+          HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
+        run: >-
+          .venv/bin/python -m publication_pipeline deploy-ssh --site-dir site
+          | tee "$RUNNER_TEMP/helios-deploy.json"
+
+      - name: Verify published roots, versions and aliases
+        env:
+          TARGET_URL: ${{ matrix.target.base_url }}
+        run: >-
+          .venv/bin/python -m scripts.verify_published_site
+          --url "$TARGET_URL" --site-dir site
+          | tee "$RUNNER_TEMP/helios-healthcheck.json"
+
+      - name: Roll back after a failed production healthcheck
+        id: rollback
+        if: failure() && steps.deploy.outcome == 'success'
+        env:
+          HELIOS_HOST: ${{ matrix.target.host }}
+          HELIOS_USER: ${{ matrix.target.user }}
+          HELIOS_PORT: ${{ matrix.target.port }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ matrix.target.deployment_root }}
+          HELIOS_PUBLIC_PATH: ${{ matrix.target.public_path }}
+          HELIOS_SSH_KEY_PATH: .secrets/helios_key
+          HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
+        run: >-
+          .venv/bin/python -m publication_pipeline rollback-ssh
+          | tee "$RUNNER_TEMP/helios-rollback.json"
+
+      - name: Verify restored production release
+        if: failure() && steps.rollback.outcome == 'success'
+        env:
+          HELIOS_BASE_URL: ${{ matrix.target.base_url }}
+        run: |
+          release_id="$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["release_id"])' \
+            "$RUNNER_TEMP/helios-rollback.json")"
+          .venv/bin/python -m publication_pipeline healthcheck \
+            --url "$HELIOS_BASE_URL" \
+            --expected-text "deployment-marker:${release_id}:" \
+            --attempts 5 \
+            --delay-seconds 5 \
+            | tee "$RUNNER_TEMP/helios-rollback-healthcheck.json"
+
+      - name: Upload Helios delivery receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: helios-measurement-${{ matrix.target.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/helios-deploy.json
+            ${{ runner.temp }}/helios-healthcheck.json
+            ${{ runner.temp }}/helios-rollback.json
+            ${{ runner.temp }}/helios-rollback-healthcheck.json
+          if-no-files-found: warn
+          retention-days: 30
+
+
+  deploy-helios-preview:
+    if: needs.prepare.outputs.helios_action == 'preview' && needs.prepare.outputs.targets != '[]'
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare.outputs.targets) }}
+    concurrency:
+      group: helios-preview-${{ matrix.target.id }}-${{ inputs.name }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: helios-preview
+    env:
+      PREVIEW_BRANCH: ${{ inputs.name }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
+
+      - name: Prepare protected SSH files
+        env:
+          HELIOS_SSH_KEY: ${{ secrets[matrix.target.key_secret] }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets[matrix.target.known_hosts_secret] }}
+        run: |
+          test -n "$HELIOS_SSH_KEY" || { echo "Missing SSH key secret" >&2; exit 1; }
+          test -n "$HELIOS_KNOWN_HOSTS" || { echo "Missing known_hosts secret" >&2; exit 1; }
+          install -d -m 700 .secrets
+          install -m 600 /dev/null .secrets/helios_key
+          install -m 600 /dev/null .secrets/known_hosts
+          printf '%s\n' "$HELIOS_SSH_KEY" > .secrets/helios_key
+          printf '%s\n' "$HELIOS_KNOWN_HOSTS" > .secrets/known_hosts
+
+      - name: Resolve preview URL
+        id: preview
+        env:
+          HELIOS_BASE_URL: ${{ matrix.target.base_url }}
+        run: |
+          slug="$(.venv/bin/python -m publication_pipeline branch-slug --branch "$PREVIEW_BRANCH")"
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+          echo "url=${HELIOS_BASE_URL%/}/previews/$slug/" >> "$GITHUB_OUTPUT"
+
+      - name: Download prepared publication
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+      - name: Select target artifact
+        env:
+          TARGET_ID: ${{ matrix.target.id }}
+        run: mv "artifacts/targets/$TARGET_ID" site
+
+      - name: Deploy preview release
+        env:
+          HELIOS_HOST: ${{ matrix.target.host }}
+          HELIOS_USER: ${{ matrix.target.user }}
+          HELIOS_PORT: ${{ matrix.target.port }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ matrix.target.deployment_root }}
+          HELIOS_PUBLIC_PATH: ${{ matrix.target.public_path }}
+          HELIOS_SSH_KEY_PATH: .secrets/helios_key
+          HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
+        run: >-
+          .venv/bin/python -m publication_pipeline preview-ssh
+          --site-dir site
+          --branch "$PREVIEW_BRANCH"
+          | tee "$RUNNER_TEMP/preview-deploy.json"
+
+      - name: Verify published roots, versions and aliases
+        env:
+          TARGET_URL: ${{ steps.preview.outputs.url }}
+        run: >-
+          .venv/bin/python -m scripts.verify_published_site
+          --url "$TARGET_URL" --site-dir site
+          | tee "$RUNNER_TEMP/preview-healthcheck.json"
+
+      - name: Upload preview delivery receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: preview-delivery-${{ matrix.target.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/preview-deploy.json
+            ${{ runner.temp }}/preview-healthcheck.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  cleanup-preview:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare.outputs.targets) }}
+    if: needs.prepare.outputs.helios_action == 'cleanup' && needs.prepare.outputs.targets != '[]'
+    concurrency:
+      group: >-
+        helios-preview-${{ matrix.target.id }}-${{ inputs.name }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: helios-preview
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
+
+      - name: Resolve preview identity
+        id: preview
+        env:
+          DELETED_BRANCH: ${{ github.event.ref }}
+          EVENT_NAME: workflow_dispatch
+          HELIOS_BASE_URL: ${{ matrix.target.base_url }}
+          REQUESTED_BRANCH: ${{ inputs.name }}
+        run: |
+          if [ "$EVENT_NAME" = "delete" ]; then
+            branch="$DELETED_BRANCH"
+          else
+            branch="$REQUESTED_BRANCH"
+          fi
+          test -n "$branch"
+          slug="$(.venv/bin/python -m publication_pipeline branch-slug --branch "$branch")"
+          printf 'branch=%s\n' "$branch" >> "$GITHUB_OUTPUT"
+          printf 'slug=%s\n' "$slug" >> "$GITHUB_OUTPUT"
+          printf 'url=%s/previews/%s/\n' "${HELIOS_BASE_URL%/}" "$slug" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare protected SSH files
+        env:
+          HELIOS_SSH_KEY: ${{ secrets[matrix.target.key_secret] }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets[matrix.target.known_hosts_secret] }}
+        run: |
+          test -n "$HELIOS_SSH_KEY" || { echo "Missing SSH key secret" >&2; exit 1; }
+          test -n "$HELIOS_KNOWN_HOSTS" || { echo "Missing known_hosts secret" >&2; exit 1; }
+          install -d -m 700 .secrets
+          install -m 600 /dev/null .secrets/helios_key
+          install -m 600 /dev/null .secrets/known_hosts
+          printf '%s\n' "$HELIOS_SSH_KEY" > .secrets/helios_key
+          printf '%s\n' "$HELIOS_KNOWN_HOSTS" > .secrets/known_hosts
+
+      - name: Remove immutable preview releases
+        env:
+          PREVIEW_BRANCH: ${{ steps.preview.outputs.branch }}
+          HELIOS_HOST: ${{ matrix.target.host }}
+          HELIOS_USER: ${{ matrix.target.user }}
+          HELIOS_PORT: ${{ matrix.target.port }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ matrix.target.deployment_root }}
+          HELIOS_PUBLIC_PATH: ${{ matrix.target.public_path }}
+          HELIOS_SSH_KEY_PATH: .secrets/helios_key
+          HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
+        run: >-
+          .venv/bin/python -m publication_pipeline cleanup-preview-ssh
+          --branch "$PREVIEW_BRANCH"
+          --confirm-branch "$PREVIEW_BRANCH"
+          | tee "$RUNNER_TEMP/preview-cleanup.json"
+
+      - name: Verify preview is unavailable
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+        run: |
+          status=000
+          for attempt in 1 2 3 4 5; do
+            status="$(curl --location --silent --show-error --output /dev/null \
+              --write-out '%{http_code}' "${PREVIEW_URL}?cleanup_probe=${GITHUB_RUN_ID}-${attempt}")"
+            if [ "$status" = "404" ]; then
+              break
+            fi
+            sleep 2
+          done
+          test "$status" = "404"
+
+      - name: Upload cleanup receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: preview-cleanup-${{ matrix.target.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/preview-cleanup.json
+          if-no-files-found: error
+          retention-days: 30

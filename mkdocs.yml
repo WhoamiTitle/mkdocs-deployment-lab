@@ -11,6 +11,7 @@ exclude_docs: |
 
 theme:
   name: material
+  custom_dir: overrides
   language: ru
   font: false
   features:
@@ -39,9 +40,14 @@ theme:
 
 plugins:
   - search:
+      separator: '[\s\-]+'
       lang:
         - ru
         - en
+      pipeline:
+        - stemmer
+        - stopWordFilter
+        - trimmer
 
 markdown_extensions:
   - admonition
@@ -90,6 +96,9 @@ nav:
       - Preview-сборки: practical/p4/previews.md
       - Healthcheck: practical/p4/healthcheck.md
       - Откат: practical/p4/rollback.md
+  - P5 — версии сайта:
+      - practical/p5/index.md
+      - Локальный поиск: practical/p5/search.md
   - Архитектура:
       - architecture/overview.md
       - Контракт развёртывания: architecture/deployment-contract.md

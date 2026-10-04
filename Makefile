@@ -17,7 +17,7 @@ lint:
 	$(PYTHON) -m ruff format --check scripts src tests
 	$(BIN_DIR)/tombi format --check pyproject.toml
 	$(BIN_DIR)/tombi lint pyproject.toml
-	$(PYTHON) -m codespell_lib README.md config docs scripts src tests
+	$(PYTHON) -m codespell_lib README.md config docs scripts src tests tools overrides
 
 architecture:
 	$(BIN_DIR)/lint-imports

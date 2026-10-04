@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches: ["**", "!site-builds"]
+    tags: ["**"]
   pull_request:
 
 permissions:

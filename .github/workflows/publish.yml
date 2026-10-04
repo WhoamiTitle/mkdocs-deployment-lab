@@ -16,7 +16,27 @@ concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  prepare-targets:
+    if: vars.HELIOS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Resolve deployment targets
+        id: targets
+        env:
+          DEPLOY_TARGETS: ${{ vars.DEPLOY_TARGETS }}
+        run: python3 -m scripts.deployment_targets
+
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -98,14 +118,50 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
 
+  build-helios:
+    needs: [quality, prepare-targets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --no-dev
+
+      - name: Build artifacts for every Helios URL
+        env:
+          DEPLOY_TARGETS: ${{ needs.prepare-targets.outputs.targets }}
+        run: .venv/bin/python -m scripts.build_deployment_targets
+
+      - name: Upload Helios artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: helios-sites-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            site/targets/
+          if-no-files-found: error
+          retention-days: 7
+
   deploy-helios-production:
     if: github.ref == 'refs/heads/main' && vars.HELIOS_ENABLED == 'true'
-    needs: quality
+    needs: [prepare-targets, build-helios]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-targets.outputs.targets) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: helios-production
     concurrency:
-      group: helios-production
+      group: helios-production-${{ matrix.target.id }}
       cancel-in-progress: false
     steps:
       - name: Check out repository
@@ -123,30 +179,38 @@ jobs:
 
       - name: Prepare protected SSH files
         env:
-          HELIOS_SSH_KEY: ${{ secrets.HELIOS_SSH_KEY }}
-          HELIOS_KNOWN_HOSTS: ${{ secrets.HELIOS_KNOWN_HOSTS }}
+          HELIOS_SSH_KEY: ${{ secrets[matrix.target.key_secret] }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets[matrix.target.known_hosts_secret] }}
         run: |
+          test -n "$HELIOS_SSH_KEY" || { echo "Missing SSH key secret" >&2; exit 1; }
+          test -n "$HELIOS_KNOWN_HOSTS" || { echo "Missing known_hosts secret" >&2; exit 1; }
           install -d -m 700 .secrets
           install -m 600 /dev/null .secrets/helios_key
           install -m 600 /dev/null .secrets/known_hosts
           printf '%s\n' "$HELIOS_SSH_KEY" > .secrets/helios_key
           printf '%s\n' "$HELIOS_KNOWN_HOSTS" > .secrets/known_hosts
 
-      - name: Build for Helios production URL
+      - name: Download prebuilt Helios artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: helios-sites-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Select target artifact
         env:
-          SITE_URL: ${{ vars.HELIOS_BASE_URL }}
-        run: >-
-          .venv/bin/python -m publication_pipeline build --site-dir site
-          | tee "$RUNNER_TEMP/helios-build.json"
+          TARGET_ID: ${{ matrix.target.id }}
+        run: |
+          mv "artifacts/$TARGET_ID" site
+          cp site/build-receipt.json "$RUNNER_TEMP/helios-build.json"
 
       - name: Deploy production release
         id: deploy
         env:
-          HELIOS_HOST: ${{ vars.HELIOS_HOST }}
-          HELIOS_USER: ${{ vars.HELIOS_USER }}
-          HELIOS_PORT: ${{ vars.HELIOS_PORT }}
-          HELIOS_DEPLOYMENT_ROOT: ${{ vars.HELIOS_DEPLOYMENT_ROOT }}
-          HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
+          HELIOS_HOST: ${{ matrix.target.host }}
+          HELIOS_USER: ${{ matrix.target.user }}
+          HELIOS_PORT: ${{ matrix.target.port }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ matrix.target.deployment_root }}
+          HELIOS_PUBLIC_PATH: ${{ matrix.target.public_path }}
           HELIOS_SSH_KEY_PATH: .secrets/helios_key
           HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
         run: >-
@@ -155,7 +219,7 @@ jobs:
 
       - name: Verify production release
         env:
-          HELIOS_BASE_URL: ${{ vars.HELIOS_BASE_URL }}
+          HELIOS_BASE_URL: ${{ matrix.target.base_url }}
         run: >-
           .venv/bin/python -m publication_pipeline healthcheck
           --url "$HELIOS_BASE_URL"
@@ -168,11 +232,11 @@ jobs:
         id: rollback
         if: failure() && steps.deploy.outcome == 'success'
         env:
-          HELIOS_HOST: ${{ vars.HELIOS_HOST }}
-          HELIOS_USER: ${{ vars.HELIOS_USER }}
-          HELIOS_PORT: ${{ vars.HELIOS_PORT }}
-          HELIOS_DEPLOYMENT_ROOT: ${{ vars.HELIOS_DEPLOYMENT_ROOT }}
-          HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
+          HELIOS_HOST: ${{ matrix.target.host }}
+          HELIOS_USER: ${{ matrix.target.user }}
+          HELIOS_PORT: ${{ matrix.target.port }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ matrix.target.deployment_root }}
+          HELIOS_PUBLIC_PATH: ${{ matrix.target.public_path }}
           HELIOS_SSH_KEY_PATH: .secrets/helios_key
           HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
         run: >-
@@ -182,7 +246,7 @@ jobs:
       - name: Verify restored production release
         if: failure() && steps.rollback.outcome == 'success'
         env:
-          HELIOS_BASE_URL: ${{ vars.HELIOS_BASE_URL }}
+          HELIOS_BASE_URL: ${{ matrix.target.base_url }}
         run: |
           release_id="$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["release_id"])' \
             "$RUNNER_TEMP/helios-rollback.json")"
@@ -197,7 +261,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: helios-measurement-${{ github.run_id }}
+          name: helios-measurement-${{ matrix.target.id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/helios-build.json
             ${{ runner.temp }}/helios-deploy.json
@@ -209,9 +273,13 @@ jobs:
 
   deploy-helios-preview:
     if: github.ref != 'refs/heads/main' && vars.HELIOS_ENABLED == 'true'
-    needs: quality
+    needs: [prepare-targets, build-helios]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-targets.outputs.targets) }}
     concurrency:
-      group: helios-preview-${{ github.ref_name }}
+      group: helios-preview-${{ matrix.target.id }}-${{ github.ref_name }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -232,9 +300,11 @@ jobs:
 
       - name: Prepare protected SSH files
         env:
-          HELIOS_SSH_KEY: ${{ secrets.HELIOS_SSH_KEY }}
-          HELIOS_KNOWN_HOSTS: ${{ secrets.HELIOS_KNOWN_HOSTS }}
+          HELIOS_SSH_KEY: ${{ secrets[matrix.target.key_secret] }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets[matrix.target.known_hosts_secret] }}
         run: |
+          test -n "$HELIOS_SSH_KEY" || { echo "Missing SSH key secret" >&2; exit 1; }
+          test -n "$HELIOS_KNOWN_HOSTS" || { echo "Missing known_hosts secret" >&2; exit 1; }
           install -d -m 700 .secrets
           install -m 600 /dev/null .secrets/helios_key
           install -m 600 /dev/null .secrets/known_hosts
@@ -244,26 +314,32 @@ jobs:
       - name: Resolve preview URL
         id: preview
         env:
-          HELIOS_BASE_URL: ${{ vars.HELIOS_BASE_URL }}
+          HELIOS_BASE_URL: ${{ matrix.target.base_url }}
         run: |
           slug="$(.venv/bin/python -m publication_pipeline branch-slug --branch "$GITHUB_REF_NAME")"
           echo "slug=$slug" >> "$GITHUB_OUTPUT"
           echo "url=${HELIOS_BASE_URL%/}/previews/$slug/" >> "$GITHUB_OUTPUT"
 
-      - name: Build for preview URL
+      - name: Download prebuilt Helios artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: helios-sites-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Select target artifact
         env:
-          SITE_URL: ${{ steps.preview.outputs.url }}
-        run: >-
-          .venv/bin/python -m publication_pipeline build --site-dir site
-          | tee "$RUNNER_TEMP/preview-build.json"
+          TARGET_ID: ${{ matrix.target.id }}
+        run: |
+          mv "artifacts/$TARGET_ID" site
+          cp site/build-receipt.json "$RUNNER_TEMP/helios-build.json"
 
       - name: Deploy preview release
         env:
-          HELIOS_HOST: ${{ vars.HELIOS_HOST }}
-          HELIOS_USER: ${{ vars.HELIOS_USER }}
-          HELIOS_PORT: ${{ vars.HELIOS_PORT }}
-          HELIOS_DEPLOYMENT_ROOT: ${{ vars.HELIOS_DEPLOYMENT_ROOT }}
-          HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
+          HELIOS_HOST: ${{ matrix.target.host }}
+          HELIOS_USER: ${{ matrix.target.user }}
+          HELIOS_PORT: ${{ matrix.target.port }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ matrix.target.deployment_root }}
+          HELIOS_PUBLIC_PATH: ${{ matrix.target.public_path }}
           HELIOS_SSH_KEY_PATH: .secrets/helios_key
           HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
         run: >-
@@ -273,9 +349,11 @@ jobs:
           | tee "$RUNNER_TEMP/preview-deploy.json"
 
       - name: Verify preview release
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
         run: >-
           .venv/bin/python -m publication_pipeline healthcheck
-          --url "${{ steps.preview.outputs.url }}"
+          --url "$PREVIEW_URL"
           --release-file site/release.json
           --attempts 5
           --delay-seconds 5

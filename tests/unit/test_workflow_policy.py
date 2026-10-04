@@ -21,8 +21,15 @@ def test_publish_jobs_require_embedded_quality_gate() -> None:
     workflow = _workflow("publish.yml")
 
     assert "run: make check" in _job(workflow, "quality")
-    for job_name in ("build-pages", "deploy-helios-production", "deploy-helios-preview"):
+    for job_name in ("build-pages",):
         assert "needs: quality" in _job(workflow, job_name)
+    assert "needs: [quality, prepare-targets]" in _job(workflow, "build-helios")
+    for job_name in ("deploy-helios-production", "deploy-helios-preview"):
+        deployment = _job(workflow, job_name)
+        assert "needs: [prepare-targets, build-helios]" in deployment
+        assert "fail-fast: false" in deployment
+        assert "publication_pipeline build" not in deployment
+        assert "actions/download-artifact@" in deployment
 
 
 def test_workflows_install_dependencies_from_uv_lock() -> None:
@@ -43,7 +50,7 @@ def test_production_deploy_and_rollback_share_concurrency_group() -> None:
     rollback = _job(_workflow("rollback.yml"), "rollback")
 
     for job in (production, rollback):
-        assert "group: helios-production" in job
+        assert "group: helios-production-${{ matrix.target.id }}" in job
         assert "cancel-in-progress: false" in job
 
 
@@ -51,10 +58,10 @@ def test_preview_deploy_and_cleanup_share_branch_concurrency_group() -> None:
     preview = _job(_workflow("publish.yml"), "deploy-helios-preview")
     cleanup = _job(_workflow("cleanup-preview.yml"), "cleanup-preview")
 
-    assert "group: helios-preview-${{ github.ref_name }}" in preview
+    assert "group: helios-preview-${{ matrix.target.id }}-${{ github.ref_name }}" in preview
     assert (
-        "helios-preview-${{ github.event_name == 'delete' && github.event.ref || inputs.branch }}"
-        in cleanup
+        "helios-preview-${{ matrix.target.id }}-"
+        "${{ github.event_name == 'delete' && github.event.ref || inputs.branch }}" in cleanup
     )
     for job in (preview, cleanup):
         assert "cancel-in-progress: false" in job

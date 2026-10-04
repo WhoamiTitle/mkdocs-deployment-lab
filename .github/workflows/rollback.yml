@@ -2,6 +2,12 @@ name: Roll back Helios
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Target ID to roll back (required to avoid rolling back every site)
+        required: true
+        default: helios-vasya
+        type: string
 
 permissions:
   contents: read
@@ -9,14 +15,40 @@ permissions:
 env:
   UV_VERSION: "0.12.22"
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  prepare-targets:
+    if: vars.HELIOS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Resolve deployment targets
+        id: targets
+        env:
+          DEPLOY_TARGETS: ${{ vars.DEPLOY_TARGETS }}
+          TARGET_ID: ${{ inputs.target }}
+        run: python3 -m scripts.deployment_targets
+
   rollback:
+    needs: prepare-targets
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-targets.outputs.targets) }}
     if: vars.HELIOS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: helios-production
     concurrency:
-      group: helios-production
+      group: helios-production-${{ matrix.target.id }}
       cancel-in-progress: false
     steps:
       - name: Check out repository
@@ -34,9 +66,11 @@ jobs:
 
       - name: Prepare protected SSH files
         env:
-          HELIOS_SSH_KEY: ${{ secrets.HELIOS_SSH_KEY }}
-          HELIOS_KNOWN_HOSTS: ${{ secrets.HELIOS_KNOWN_HOSTS }}
+          HELIOS_SSH_KEY: ${{ secrets[matrix.target.key_secret] }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets[matrix.target.known_hosts_secret] }}
         run: |
+          test -n "$HELIOS_SSH_KEY" || { echo "Missing SSH key secret" >&2; exit 1; }
+          test -n "$HELIOS_KNOWN_HOSTS" || { echo "Missing known_hosts secret" >&2; exit 1; }
           install -d -m 700 .secrets
           install -m 600 /dev/null .secrets/helios_key
           install -m 600 /dev/null .secrets/known_hosts
@@ -45,11 +79,11 @@ jobs:
 
       - name: Activate previous release
         env:
-          HELIOS_HOST: ${{ vars.HELIOS_HOST }}
-          HELIOS_USER: ${{ vars.HELIOS_USER }}
-          HELIOS_PORT: ${{ vars.HELIOS_PORT }}
-          HELIOS_DEPLOYMENT_ROOT: ${{ vars.HELIOS_DEPLOYMENT_ROOT }}
-          HELIOS_PUBLIC_PATH: ${{ vars.HELIOS_PUBLIC_PATH }}
+          HELIOS_HOST: ${{ matrix.target.host }}
+          HELIOS_USER: ${{ matrix.target.user }}
+          HELIOS_PORT: ${{ matrix.target.port }}
+          HELIOS_DEPLOYMENT_ROOT: ${{ matrix.target.deployment_root }}
+          HELIOS_PUBLIC_PATH: ${{ matrix.target.public_path }}
           HELIOS_SSH_KEY_PATH: .secrets/helios_key
           HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
         run: >-
@@ -58,7 +92,7 @@ jobs:
 
       - name: Verify restored site
         env:
-          HELIOS_BASE_URL: ${{ vars.HELIOS_BASE_URL }}
+          HELIOS_BASE_URL: ${{ matrix.target.base_url }}
         run: |
           release_id="$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["release_id"])' \
             "$RUNNER_TEMP/helios-rollback.json")"
@@ -73,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: helios-rollback-${{ github.run_id }}
+          name: helios-rollback-${{ matrix.target.id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/helios-rollback.json
             ${{ runner.temp }}/helios-rollback-healthcheck.json

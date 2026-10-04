@@ -3,6 +3,11 @@ name: Verify Helios resilience
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: Target ID for isolated sandbox checks
+        required: true
+        default: helios-vasya
+        type: string
       confirmation:
         description: Type mkdocs-deployment-lab-sandbox to run destructive sandbox checks
         required: true
@@ -14,8 +19,34 @@ permissions:
 env:
   UV_VERSION: "0.12.22"
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  prepare-targets:
+    if: vars.HELIOS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Resolve deployment targets
+        id: targets
+        env:
+          DEPLOY_TARGETS: ${{ vars.DEPLOY_TARGETS }}
+          TARGET_ID: ${{ inputs.target }}
+        run: python3 -m scripts.deployment_targets
+
   resilience:
+    needs: prepare-targets
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-targets.outputs.targets) }}
     if: >-
       vars.HELIOS_ENABLED == 'true' &&
       inputs.confirmation == 'mkdocs-deployment-lab-sandbox'
@@ -38,9 +69,11 @@ jobs:
 
       - name: Prepare protected SSH files
         env:
-          HELIOS_SSH_KEY: ${{ secrets.HELIOS_SSH_KEY }}
-          HELIOS_KNOWN_HOSTS: ${{ secrets.HELIOS_KNOWN_HOSTS }}
+          HELIOS_SSH_KEY: ${{ secrets[matrix.target.key_secret] }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets[matrix.target.known_hosts_secret] }}
         run: |
+          test -n "$HELIOS_SSH_KEY" || { echo "Missing SSH key secret" >&2; exit 1; }
+          test -n "$HELIOS_KNOWN_HOSTS" || { echo "Missing known_hosts secret" >&2; exit 1; }
           install -d -m 700 .secrets
           install -m 600 /dev/null .secrets/helios_key
           install -m 600 /dev/null .secrets/known_hosts
@@ -50,12 +83,12 @@ jobs:
       - name: Run destructive checks in sandbox
         env:
           ALLOW_DESTRUCTIVE_TEST_CLEANUP: "1"
-          HELIOS_BASE_URL: ${{ vars.HELIOS_BASE_URL }}
-          HELIOS_HOST: ${{ vars.HELIOS_HOST }}
+          HELIOS_BASE_URL: ${{ matrix.target.base_url }}
+          HELIOS_HOST: ${{ matrix.target.host }}
           HELIOS_KNOWN_HOSTS_PATH: .secrets/known_hosts
-          HELIOS_PORT: ${{ vars.HELIOS_PORT }}
+          HELIOS_PORT: ${{ matrix.target.port }}
           HELIOS_SSH_KEY_PATH: .secrets/helios_key
-          HELIOS_USER: ${{ vars.HELIOS_USER }}
+          HELIOS_USER: ${{ matrix.target.user }}
         run: |
           sandbox_url="${HELIOS_BASE_URL%/}-sandbox/"
           .venv/bin/python -m scripts.verify_helios_resilience \
@@ -67,7 +100,7 @@ jobs:
       - name: Upload resilience evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: helios-resilience-${{ github.run_id }}
+          name: helios-resilience-${{ matrix.target.id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/helios-resilience.json
           if-no-files-found: error
           retention-days: 30

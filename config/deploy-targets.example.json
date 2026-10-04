@@ -1,0 +1,24 @@
+[
+  {
+    "id": "helios-vasya",
+    "host": "helios.cs.ifmo.ru",
+    "port": 2222,
+    "user": "s507353",
+    "base_url": "https://se.ifmo.ru/~s507353/mkdocs-deployment-lab/",
+    "deployment_root": ".deployments/mkdocs-deployment-lab",
+    "public_path": "public_html/mkdocs-deployment-lab",
+    "key_secret": "HELIOS_SSH_KEY",
+    "known_hosts_secret": "HELIOS_KNOWN_HOSTS"
+  },
+  {
+    "id": "helios-jenya",
+    "host": "helios.cs.ifmo.ru",
+    "port": 2222,
+    "user": "s505999",
+    "base_url": "https://se.ifmo.ru/~s505999/mkdocs-deployment-lab/",
+    "deployment_root": ".deployments/mkdocs-deployment-lab",
+    "public_path": "public_html/mkdocs-deployment-lab",
+    "key_secret": "JENYA_HELIOS_SSH_KEY",
+    "known_hosts_secret": "HELIOS_KNOWN_HOSTS"
+  }
+]

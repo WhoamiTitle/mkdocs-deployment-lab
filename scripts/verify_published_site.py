@@ -2,9 +2,16 @@
 
 import argparse
 import json
+import sys
+import time
+import uuid
+from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from publication_pipeline.application.errors import HealthcheckError
+from publication_pipeline.application.models import HealthcheckResult
+from publication_pipeline.application.ports import HttpClient
 from publication_pipeline.application.verify_release import VerifyRelease, VerifyReleaseRequest
 from publication_pipeline.infrastructure.filesystem_release_artifact_store import (
     FilesystemReleaseArtifactStore,
@@ -50,24 +57,80 @@ def verify_local_site(site: Path) -> None:
             raise ValueError("Each stable version must have a local search index")
 
 
+def verify_remote_site(
+    site: Path,
+    base_url: str,
+    http_client: HttpClient,
+    *,
+    wait_seconds: int = 0,
+    poll_seconds: float = 10,
+    clock: Callable[[], float] = time.monotonic,
+    pause: Callable[[float], None] = time.sleep,
+) -> None:
+    if wait_seconds < 0 or poll_seconds <= 0:
+        raise ValueError("Healthcheck wait must be nonnegative and poll interval positive")
+    verify_local_site(site)
+    verifier = VerifyRelease(http_client)
+    deadline = clock() + wait_seconds
+    while True:
+        results: list[HealthcheckResult] = []
+        try:
+            for relative, expected in site_checks(site):
+                address = urljoin(base_url, relative)
+                if wait_seconds:
+                    parts = urlsplit(address)
+                    query = f"{parts.query}&" if parts.query else ""
+                    address = urlunsplit(
+                        (
+                            parts.scheme,
+                            parts.netloc,
+                            parts.path,
+                            f"{query}publication_probe={uuid.uuid4().hex}",
+                            parts.fragment,
+                        )
+                    )
+                results.append(
+                    verifier.execute(
+                        VerifyReleaseRequest(
+                            url=address,
+                            expected_texts=expected,
+                            attempts=1 if wait_seconds else 5,
+                            delay_seconds=0 if wait_seconds else 5,
+                        )
+                    )
+                )
+        except HealthcheckError as error:
+            remaining = deadline - clock()
+            if wait_seconds == 0:
+                raise
+            if remaining <= 0:
+                raise HealthcheckError(
+                    f"Published site did not become ready within {wait_seconds}s: {error}"
+                ) from error
+            print(
+                f"Waiting for published site ({remaining:.0f}s left): {error}",
+                file=sys.stderr,
+                flush=True,
+            )
+            pause(min(poll_seconds, remaining))
+            continue
+        for result in results:
+            print(json.dumps({"url": result.url, "status": result.status_code}))
+        return
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
     parser.add_argument("--site-dir", required=True)
+    parser.add_argument("--wait-seconds", type=int, default=0)
     args = parser.parse_args()
-    site = Path(args.site_dir)
-    verify_local_site(site)
-    verifier = VerifyRelease(UrllibHttpClient())
-    for relative, expected in site_checks(site):
-        result = verifier.execute(
-            VerifyReleaseRequest(
-                url=urljoin(args.url, relative),
-                expected_texts=expected,
-                attempts=5,
-                delay_seconds=5,
-            )
-        )
-        print(json.dumps({"url": result.url, "status": result.status_code}))
+    verify_remote_site(
+        Path(args.site_dir),
+        args.url,
+        UrllibHttpClient(),
+        wait_seconds=args.wait_seconds,
+    )
 
 
 if __name__ == "__main__":

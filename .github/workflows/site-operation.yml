@@ -78,7 +78,7 @@ jobs:
   deploy-pages:
     needs: prepare
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 50
     permissions:
       contents: read
       pages: write
@@ -118,7 +118,7 @@ jobs:
       - name: Verify published roots, versions and aliases
         run: >-
           .venv/bin/python -m scripts.verify_published_site
-          --url "$PAGES_BASE_URL" --site-dir artifacts/pages
+          --url "$PAGES_BASE_URL" --site-dir artifacts/pages --wait-seconds 720
       - name: Verify removed Pages preview returns 404
         if: inputs.operation == 'cleanup-preview'
         env:
@@ -151,7 +151,7 @@ jobs:
         if: failure() && steps.restored.outcome == 'success'
         run: >-
           .venv/bin/python -m scripts.verify_published_site
-          --url "$PAGES_BASE_URL" --site-dir artifacts/previous-pages
+          --url "$PAGES_BASE_URL" --site-dir artifacts/previous-pages --wait-seconds 720
 
   recover-pages-state:
     needs: [prepare, deploy-pages]

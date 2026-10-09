@@ -86,6 +86,8 @@ def test_pages_state_mutations_are_serialized_and_delivery_has_no_git_write() ->
     assert "contents: read" in pages
     assert "contents: write" not in pages
     assert "scripts.verify_published_site" in pages
+    assert "timeout-minutes: 50" in pages
+    assert pages.count("--wait-seconds 720") == 2
     assert "artifacts/previous-pages/" in pages
     assert "actions/deploy-pages@" in pages
 

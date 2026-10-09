@@ -98,6 +98,10 @@ nav:
       - Откат: practical/p4/rollback.md
   - P5 — версии сайта:
       - practical/p5/index.md
+      - Публикация версий: practical/p5/publication.md
+      - Переключение версий и latest: practical/p5/latest.md
+      - Адреса и структура каталогов: practical/p5/layout.md
+      - Откат версий: practical/p5/rollback.md
       - Локальный поиск: practical/p5/search.md
   - Архитектура:
       - architecture/overview.md

@@ -25,15 +25,15 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: blue
+      primary: orange
+      accent: orange
       toggle:
         icon: material/brightness-7
         name: Тёмная тема
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: blue
+      primary: orange
+      accent: orange
       toggle:
         icon: material/brightness-4
         name: Светлая тема

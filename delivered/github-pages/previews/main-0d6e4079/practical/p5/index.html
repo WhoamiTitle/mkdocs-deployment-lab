@@ -18,7 +18,7 @@
         <link rel="prev" href="../p4/rollback/">
       
       
-        <link rel="next" href="search/">
+        <link rel="next" href="publication/">
       
       
         
@@ -797,6 +797,14 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -849,6 +857,118 @@
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="publication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Публикация версий
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="latest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Переключение версий и latest
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Адреса и структура каталогов
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="rollback/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Откат версий
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -1168,11 +1288,29 @@
 
 
 <h1 id="p5">P5: версии опубликованного сайта<a class="headerlink" href="#p5" title="Permanent link">&para;</a></h1>
-<p>Срез <code>v1.0</code> содержит исходные T4 и P4. Срез <code>v1.1</code> добавляет описание
+<p>Практическая часть реализует версионирование опубликованного сайта
+с помощью <code>mike</code> на GitHub Pages и Helios.</p>
+<p>Обязательные свойства решения:</p>
+<ul>
+<li>опубликованы стабильные версии <code>v1.0</code> и <code>v1.1</code>;</li>
+<li>версия создаётся из git-тега;</li>
+<li>доступны переключатель версий и стабильный алиас <code>latest</code>;</li>
+<li>обычные push обновляют preview ветки;</li>
+<li>локальный поиск поддерживает русский язык и проверен на пяти словоформах.</li>
+</ul>
+<p>Подробности выполнения:</p>
+<ul>
+<li><a href="publication/">Публикация стабильных версий</a>: содержание срезов, теги и правила публикации.</li>
+<li><a href="latest/">Переключение версий и алиас latest</a>: выбор версии и изменение алиаса.</li>
+<li><a href="layout/">Адреса и структура каталогов</a>: публичные пути, хранение состояния и очистка preview.</li>
+<li><a href="rollback/">Откат опубликованных версий</a>: восстановление предыдущего набора на Pages и Helios.</li>
+<li><a href="search/">Локальный поиск</a>: настройка и результаты проверки пяти запросов.
+Срез <code>v1.0</code> содержит исходные T4 и P4. Срез <code>v1.1</code> добавляет описание
 фактических изменений: конфигурацию нескольких целей через <code>DEPLOY_TARGETS</code>,
 матрицу доставки, версии <code>mike</code>, preview на Pages и управление <code>latest</code>.
 Измерения исходного эксперимента не изменены; новые длительности и результаты
-удалённых испытаний здесь не придумываются.</p>
+удалённых испытаний здесь не придумываются.</li>
+</ul>
 <h2 id="_1">Адреса на каждой площадке<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
